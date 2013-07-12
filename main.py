@@ -8,10 +8,10 @@ import tornado.websocket
 import tornado.gen
 from tornado.iostream import StreamClosedError
 
+import binascii
 import logging
 import os
 import requests
-from requests_oauthlib import OAuth1
 import json
 import re
 import torndb
@@ -20,12 +20,11 @@ import base64
 import hashlib
 import subprocess
 import numpy as np
-from math import radians, cos, sin, asin, sqrt, atan2
+from math import radians, cos, sin, asin, sqrt
 import uuid
 
 from gcm import *
-from APNSWrapper import *
-import twitter
+from apnsclient import *
 
 def require_basic_auth(handler_class):
     # Should return the new _execute function, one which enforces
@@ -76,68 +75,21 @@ def require_basic_auth(handler_class):
     handler_class._execute = wrap_execute(handler_class._execute)
     return handler_class
 
-PRECISION = 10
-R = 6367
-def haversine(a, b):
+
+def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance between two points
     on the earth (specified in decimal degrees)
     """
     # convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(radians, [a['longitude'], a['latitude'], b['longitude'], b['latitude']])
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
     # haversine formula
     dlon = lon2 - lon1
     dlat = lat2 - lat1
     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
     c = 2 * asin(sqrt(a))
-    km = R * c
+    km = 6367 * c
     return km
-
-def to_cartesian(latitude, longitude):
-    """
-
-    """
-    x = R * cos(lattitude) * cos(longitude)
-    y = R * cos(latitude) * sin(longitude)
-    z = R * sin(latitude)
-    return {'x' : x, 'y' :  y, 'z' : z}
-
-def from_cartesian(a):
-    """
-        a is a cartesian coordinates array [x, y, z]
-    """
-    latitude = asin(a['z'] / R)
-    longitude = atan2(a['y'], a['x'])
-    return {'latitude' : latitude, 'longitude' : longitude}
-
-def nearest_point_great_circle(a, b, c):
-    """
-
-    """
-    d = np.array(to_cartesian(a['latitude'], a['longitude']))
-    e = np.array(to_cartesian(b['latitude'], b['longitude']))
-    f = np.array(to_cartesian(c['coords']['latitude'], c['coords']['longitude']))
-
-    G = np.cross(d, e)
-    H = np.cross(f, G)
-    t = np.cross(G, H)
-    t *= R
-    return from_cartesian(t)
-
-def on_segment(a, b, t):
-    """
-
-    """
-    return abs(haversine(a,b) - haversine(a,t) - haversine(b, t)) < PRECISION
-
-def nearest_point_segment(a, b, c):
-    """
-
-    """
-    t = nearest_point_great_circle(a,b,c)
-    if on_segment(a,b,t):
-        return t
-    return (a if haversine(a,c) < haversine(b,c) else c)
 
 
 logging.basicConfig(filename='beroads.log', level=logging.INFO,
@@ -153,16 +105,11 @@ define("package_query", default="SELECT * FROM package WHERE package_name = %s",
     help="database request to get package by package name")
 define("max_subscribers", default=0, help="")
 define("webcams_directory", default="/var/www/vhosts/beroads/public_html/dashboard/webcams/", help="")
-define("webcams_fetch_frequency", default=900000, help="")
-define("traffic_fetch_frequency", default=900000, help="")
+define("webcams_fetch_frequency", default=300000, help="")
+define("traffic_fetch_frequency", default=300000, help="")
 define("apns_certificate", "beroads.pem")
 define("gcm_api_key", "AIzaSyC_UN1QUzNZLsyWzCbL2HIDglgN92b5FxY")
-define("apns_sandbox_mode", True)
 
-define("twitter_consumer_key", "iteQq6eatYKJwTKfcHcyFQ")
-define("twitter_consumer_secret", "m1V9bs5q1XTejV1MqM6rmGqonNeARoCqS5aO33TxE")
-define("twitter_access_token_key", "351441174-ykJ5w2V5zCcilP3nHb4ihCWXMkPdM03VuAd9s9w2")
-define("twitter_access_token_secret", "d1KIcR6ZYxU5c6Pf7uqjQ88gb46yHyBEEGGY3hrw2Y")
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -170,20 +117,16 @@ class Application(tornado.web.Application):
             cookie_secret="5725af95ef74805b753cd3689bb3393681e02ce6",
             static_path="static",
             xsrf_cookies=False,
-            server_ip=options.ip,
-	    debug=True
+            server_ip=options.ip
         )
 
         handlers = [
-            (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": "static"}),
+            #(r"/static/(.*)", tornado.web.StaticFileHandler, {"path": "static"}),
             (r"/socket", TrafficSocketHandler),
-            (r"/socket/send", WebsocketSendNotificationHandler),
             (r"/", DashboardHandler),
-
             (r"/gcm", GoogleCloudMessagingHandler),
             (r"/apns", ApplePushNotificationServerHandler),
             (r"/apns/send", AppleSendNotificationHandler),
-            (r"/analytics/subscribers/([0-9a-zA-Z_\-]+)", AnalyticsSubscribersHandler),
             (r"/analytics/os/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsOSHandler),
             (r"/analytics/language/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsLanguageHandler),
             (r"/analytics/browser/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsBrowserHandler),
@@ -197,19 +140,11 @@ class Application(tornado.web.Application):
         tornado.web.Application.__init__(self, handlers, **settings)
 
         self.gcm = GCM(options.gcm_api_key)
-        self.apns = APNSNotificationWrapper(options.apns_certificate, options.apns_sandbox_mode)
-
-        self.twitter_bot = twitter.Api(consumer_key=options.twitter_consumer_key,
-                                        consumer_secret=options.twitter_consumer_secret,
-                                        access_token_key=options.twitter_access_token_key,
-                                        access_token_secret=options.twitter_access_token_secret)
-
-        if self.twitter_bot.VerifyCredentials() is None:
-            raise Exception("Twitter bot credentials are wroooong ! ")
+        self.apns = APNSNotificationWrapper(options.apns_certificate, True)
 
         # Have one global connection to the TDT DB across all handlers
         self.db = torndb.Connection(
-            host="localhost", database=options.mysql_database,
+            host=options.mysql_host, database=options.mysql_database,
             user=options.mysql_user, password=options.mysql_password)
 
     @tornado.gen.engine
@@ -229,9 +164,7 @@ class Application(tornado.web.Application):
 
     @tornado.gen.engine
     def load_webcams(self):
-        logger = logging.getLogger("webcams")
         try:
-            logger.info("Fetching webcams from trafiroutes.wallonie.be ...")
             #load webcams from Centre Perex
             for i in range(0, 51):
                 yield tornado.gen.Task(self.load_image,
@@ -250,7 +183,7 @@ class Application(tornado.web.Application):
                         i) + '.jpg', '')
 
 
-            logger.info("Fetching webcams from verkeerscentrum.be ...")
+            #flanders
             page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent")
             links = reg.findall(page.content)
 
@@ -276,7 +209,6 @@ class Application(tornado.web.Application):
                     ,
                     options.webcams_directory + 'flanders/image_brussel_' + str(i) + '.jpg', '')
 
-            logger.info("Fetching webcams from bruxellesmobilite.irisnet.be ...")
             page = requests.get("http://www.bruxellesmobilite.irisnet.be/cameras/json/fr/")
             jsonpage = json.loads(page.content)
             for i in range(0, len(jsonpage['features'])):
@@ -286,8 +218,22 @@ class Application(tornado.web.Application):
                         i) + '.jpg', '')
 
         except Exception as e:
-            logger.exception(e)
+            logging.exception(e)
 
+
+    def compare_events(self, e1, e2):
+        if (e1['location'] != e2['location']):
+            return 0
+        if (e1['message'] != e2['message']):
+            return 0
+        if (e1['source'] != e2['source']):
+            return 0
+        if (e1['lat'] != e2['lat']):
+            return 0
+        if (e1['lng'] != e2['lng']):
+            return 0
+
+        return 1
 
     @tornado.gen.engine
     def traffic_differ(self, language, callback):
@@ -303,7 +249,7 @@ class Application(tornado.web.Application):
             for i in range(0, len(new['TrafficEvent']['item'])):
                 present = False
                 for j in range(0, len(old['TrafficEvent']['item'])):
-                    if int(new['TrafficEvent']['item'][i]['id']) == int(old['TrafficEvent']['item'][j]['id']):
+                    if (self.compare_events(new['TrafficEvent']['item'][i], old['TrafficEvent']['item'][j])):
                         present = True
                 if not present:
                     t += json.dumps(new['TrafficEvent']['item'][i]) + ","
@@ -322,14 +268,16 @@ class Application(tornado.web.Application):
     def notify_subscribers(self, language, events, callback):
         """
         """
-        logger = logging.getLogger("notification pusher")
+        logger = logging.getLogger("Notifier")
         logger.info("Notifying subscribers from channel %s" % language)
 
         for subscriber in TrafficSocketHandler.channels[language]:
             for event in events['TrafficEvent']['item']:
-                distance = int(haversine(subscriber.coords,
-                        {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
-                if distance < int(subscriber.area):
+                distance = int(haversine(float(subscriber.config['coords']['longitude']),
+                    float(subscriber.config['coords']['latitude']),
+                    float(event['lng']),
+                    float(event['lat'])))
+                if distance < int(subscriber.config['area']):
                     event['distance'] = distance
                     #PUBLISH
                     message = {
@@ -337,99 +285,58 @@ class Application(tornado.web.Application):
                         "code": 3,
                         "data": event
                     }
-                    logger.info("Sending update to subscriber %s" % subscriber.uuid)
+                    logging.info("Sending update to subscriber %s" % subscriber.uuid)
                     subscriber.write_message(tornado.escape.json_encode(message))
 
 
         # Google Cloud Service
         for subscriber in GoogleCloudMessagingHandler.gcm_connections[language]:
             for event in events['TrafficEvent']['item']:
-                if 'points' in subscriber:
-                    current_point = subscriber['points'][0]
-                    for i in range(1, len(subscriber['points'])):
-                        #compute distance between a point (the event coordinates) and
-                        # a line delimited by two points from the points array
-                        next_point = subscriber['points'][i]
-                        #first we need to get coordinates in cartesian
-                        x = nearest_point_segment(current_point, next_point, subscriber['coords'])
-                        distance = haversine(x, subscriber['coords']) < subscriber['area']
-
-                else:
-                    #TODO : fix this non sense
-                    distance = int(haversine({'latitude' : subscriber['coords']['lat'], 'longitude' : subscriber['coords']['lng']},
-                            {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
-
+                distance = int(haversine(float(subscriber['coords']['lng']),
+                    float(subscriber['coords']['lat']),
+                    float(event['lng']),
+                    float(event['lat'])))
                 if distance < int(subscriber['area']):
                     event['distance'] = distance
-                    response = self.gcm.json_request(
-                            registration_ids=[subscriber['registration_id']], data=event,
+                    #PUBLISH
+                    try:
+                        res = self.gcm.json_request(
+                            registration_id=subscriber['registration_id'], data=event,
                             collapse_key='uptoyou', delay_while_idle=True, time_to_live=3600
                         )
-                    logger.info("Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
-                    # Handling errors
-                    if 'errors' in response:
-                        for error, reg_ids in response['errors'].items():
-                            # Check for errors and act accordingly
-                            if error is 'NotRegistered':
-                                # Remove reg_ids from database
-                                logger.error("Device %s not registered, removing from channel %s"%
-                                             (subscriber["registration_id"], language))
-                                GoogleCloudMessagingHandler.gcm_connections[language].delete(subscriber)
-                    if 'canonical' in response:
-                        for reg_id, canonical_id in response['canonical'].items():
-                            # Repace reg_id with canonical_id in your database
-                            subscriber['registration_id'] = canonical_id
+                        logging.info("Sending update to google subscriber %s" % subscriber['registration_id'])
+                    except GCMNotRegisteredException as e:
+                        GoogleCloudMessagingHandler.gcm_connections[language].remove(subscriber)
+                        logger.error(e)
+                    except GCMInvalidRegistrationException as e:
+                        GoogleCloudMessagingHandler.gcm_connections[language].remove(subscriber)
+                        logger.error(e)
+                    except Exception as e:
+                        logger.error(e)
+
 
 
         # Apple APNS
 
         for subscriber in ApplePushNotificationServerHandler.apns_connections[language]:
             for event in events['TrafficEvent']['item']:
-                distance = int(haversine(subscriber['coords'],
-                        {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
+                distance = int(haversine(float(subscriber['coords']['longitude']),
+                    float(subscriber['coords']['latitude']),
+                    float(event['lng']),
+                    float(event['lat'])))
                 if distance < int(subscriber['area']):
                     event['distance'] = distance
                     #PUBLISH
                     message = APNSNotification()
-                    alert = APNSAlert()
-                    message.tokenHex(subscriber['device_token'])
+                    message.token(binascii.unhexlify(subscriber['deviceToken']))
                     #the entire payload is limited to 256bytes so we put an arbitrary limit on 220 chars for the text
-                    alert.body(event['location'].encode('utf-8'))
-                    message.alert(alert)
+                    message.alert(event['location'][0:219])
                     message.badge(5)
                     message.sound()
                     self.apns.append(message)
-                    logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
-            self.apns.notify()
+                    self.apns.notify()
 
-        # Twitter
-        for event in events['TrafficEvent']['item']:
-            
-	    if event['time'] < time.time()-(24*60*60):
-	    	share_url = "http://beroads.com/event/%s"%event['id']
-	        place_id = None
-
-	        auth = OAuth1(options.twitter_consumer_key, options.twitter_consumer_secret,
-        	        options.twitter_access_token_key, options.twitter_access_token_key)
-	        payload = {'lat' : event['lat'], 'long' : event['lng']}
-        	r = requests.get('https://api.twitter.com/1.1/geo/search.json', params=payload, auth=auth)
-
-		if r.status_code==200:
-               	    result = json.loads(r.content)
-                    if len(result['result']['places']):
-	                place_id = result['result']['places'][0]['id']
-
-	            status = "%s ... %s"%(
-	                event['location'][0:(140-len(share_url)-4)], share_url)
-
-	            logger.info("Publishing status : %s on Twitter..."%status)
-
-	            self.twitter_bot.PostUpdate(status=status,
-	                latitude=event['lat'],
-	                longitude=event['lng'],
-	                place_id=place_id,
-	                display_coordinates=True
-	            )
+                    logging.info("Sending update to apple subscriber %s" % subscriber['device_token'])
 
         callback(True)
 
@@ -438,23 +345,20 @@ class Application(tornado.web.Application):
         """
 
         """
-        logger = logging.getLogger("traffic loader")
         try:
             languages = ['nl', 'fr', 'de', 'en']
             for language in languages:
-                logger.info("Fetching %s traffic ..."%language)
                 new_events = yield tornado.gen.Task(self.traffic_differ, language)
                 if new_events is not None:
                     published = yield tornado.gen.Task(self.notify_subscribers, language, new_events)
         except Exception as e:
-            logger.exception(e)
+            logging.exception(e)
 
 
 class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
     """
 
     """
-    logger = logging.getLogger("websocket handler")
     channels = {'fr': [], 'nl': [], 'de': [], 'en': []}
 
     def allow_draft76(self):
@@ -462,7 +366,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         return True
 
     def open(self):
-        self.logger.info("Websocket connection from %s" % self.ws_connection)
+        logging.info("Websocket connection from %s" % self.ws_connection)
         self.uuid = str(uuid.uuid4())
         ack = {
             "uuid": self.uuid,
@@ -532,21 +436,22 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                 6 BYE
         """
 
-        self.logger.info("got message %r", message)
+        logging.info("got message %r", message)
 
         try:
             parsed = tornado.escape.json_decode(message)
             #SUBSCRIBE OR UPDATE
             if int(parsed['code']) == 1:
                 TrafficSocketHandler.test_message(parsed)
-
+                config = {
+                    "language": parsed['language'],
+                    "coords": parsed['coords'],
+                    "area": parsed["area"]
+                }
                 self.uuid = str(uuid.uuid4())
-                self.language = parsed['language']
-                self.coords = parsed['coords']
-                self.area = parsed["area"]
-
-                self.channels[self.language].append(self)
-		ack = {
+                self.config = config
+                self.channels[config['language']].append(self)
+                ack = {
                     "uuid": self.uuid,
                     "code": 2,
                     "message": "You successfully subscribed to beroads feed"
@@ -558,9 +463,9 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                     "coords": parsed['coords'],
                     "area": parsed["area"]
                 }
-                for subscriber in self.channels[self.config['language']]:
-                    if subscriber.uuid == parsed['uuid']:
-                        subscriber.config = config
+                for subsriber in self.channels[self.config['language']]:
+                    if subsriber.uuid == parsed['uuid']:
+                        subsriber.config = config
                         ack = {
                             "uuid": self.uuid,
                             "code": 2,
@@ -569,7 +474,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                         self.ws_connection.write_message(tornado.escape.json_encode(ack))
             #ACK
             elif int(parsed['code']) == 2:
-                self.logger.info("ACK received from subscriber " + self.ws_connection.uuid.value)
+                logging.info("ACK received from subscriber " + self.ws_connection.uuid.value)
 
         except AttributeError as e:
             logging.exception(e)
@@ -652,14 +557,12 @@ class BaseHandler(tornado.web.RequestHandler):
 
 
 class GoogleCloudMessagingHandler(BaseHandler):
-
-    logger = logging.getLogger("GCM handler")
     gcm_connections = {'fr': [], 'nl': [], 'de': [], 'en': []}
 
 
     def post(self, *args, **kwargs):
         try:
-            self.logger.info("Request received from android device : " + self.request.body)
+            logging.info("Request received from android device : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
             if(data['registration_id'] is None or data['registration_id'] == ""):
                 raise AttributeError("registration_id is not set")
@@ -692,7 +595,6 @@ class GoogleCloudMessagingHandler(BaseHandler):
             present = False
             for subscriber in self.gcm_connections[data['language']]:
                 if subscriber['registration_id'] == data['registration_id']:
-                    subscriber = data
                     present = True
 
             if not present:
@@ -702,63 +604,63 @@ class GoogleCloudMessagingHandler(BaseHandler):
             self.set_status(200)
 
         except Exception as e:
-            self.logger.error(e)
+            logging.error(e)
             self.send_error(500)
 
 
 class AppleSendNotificationHandler(BaseHandler):
     def get(self, *args, **kwargs):
         if self.get_argument("device_token") is not None and self.get_argument("message") is not None:
-            message = APNSNotification()
-            alert = APNSAlert()
-            alert.body(str(self.get_argument("message")))
-            message.tokenHex(self.get_argument("device_token"))
-            #the entire payload is limited to 256bytes so we put an arbitrary limit on 220 chars for the text
-            message.alert(alert)
-            message.badge(1)
-            message.sound()
-            self.apns.append(message)
-            self.apns.notify()
-        else:
-            self.send_error(404)
+            session = Session()
+            con = session.get_connection("push_sandbox", cert_file="beroads.pem")
+            apns = APNs(con, tail_timeout=10)
+            message = Message([binascii.unhexlify(self.get_argument("device_token"))],
+                alert=self.get_argument("message"), badge=10)
+            # Send the message.
+            res = apns.send(message)
 
-class WebsocketSendNotificationHandler(BaseHandler):
+            out = "Sending message {0} to {1}".format(self.get_argument("message"), self.get_argument("device_token"))
+            # Check failures. Check codes in APNs reference docs.
+            for token, reason in res.failed.items():
+                code, errmsg = reason
+                out += "Device faled: {0}, reason: {1}".format(token, errmsg)
 
-    def get(self, *args, **kwargs):
-        if self.get_argument("uuid") is not None and self.get_argument("message") is not None:
-            for subscriber in TrafficSocketHandler.channels[language]:
-                if subscriber.uuid == self.get_argument("uuid"):
-                    message = {
-                        "uuid": subscriber.uuid,
-                        "code": 3,
-                        "data": self.get_argument("message")
-                    }
-                    subscriber.write_message(tornado.escape.json_encode(message))
+            # Check failures not related to devices.
+            for code, errmsg in res.errors:
+                out += "Error: ", errmsg
+
+            # Check if there are tokens that can be retried
+            if res.needs_retry():
+                # repeat with retry_message or reschedule your task
+                retry_message = res.retry()
+
+            # automatically closes connection for you
+            for token, since in apns.feedback():
+                out += "Token {0} is unavailable since {1}".format(token, since)
+
+            self.write(out)
         else:
             self.send_error(404)
 
 
 class ApplePushNotificationServerHandler(BaseHandler):
-
-    logger = logging.getLogger("APNS handler")
     apns_connections = {'fr': [], 'nl': [], 'de': [], 'en': []}
+
     SUPPORTED_METHODS = ("POST")
 
     @classmethod
-    def feedback(cls):
-        logger = logging.getLogger("APNS feedback")
-        feedback = APNSFeedbackWrapper(options.apns_certificate, True)
-        feedback.receive()
-        for x, y in feedback:
-            logger.info("Device token %s unavailable since %s"%(str(y), x.strftime("%m %d %Y %H:%M:%S")))
-            for channel in cls.apns_connections:
-                for subscriber in channel:
-                    if subscriber['device_token'] == y:
-                        channel.remove(subscriber)
+    def check_invalid_token(self):
+        # automatically closes connection for you
+        for token, since in self.apns.feedback():
+            print "Token {0} is unavailable since {1}".format(token, since)
+            for channel in self.apns_connections:
+                if token in channel:
+                    channel.remove(token)
+
 
     def post(self, *args, **kwargs):
         try:
-            self.logger.info("Request received from iDevice : " + self.request.body)
+            logging.info("Request received from iDevice : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
             if(data['device_token'] is None or data['device_token'] == ""):
                 raise AttributeError("device_token is not set")
@@ -784,18 +686,13 @@ class ApplePushNotificationServerHandler(BaseHandler):
                 if (float(data["coords"]["latitude"]) > 90
                     or float(data["coords"]["latitude"]) < -90):
                     raise ValueError("latitude is not valid")
-                else:
-                    data['coords']['latitude'] = float(data['coords']['latitude'])
                 if (float(data["coords"]["longitude"]) > 180
                     or float(data["coords"]["longitude"]) < -180):
                     raise ValueError("longitude is not valid")
-                else:
-                    data['coords']['longitude'] = float(data['coords']['longitude'])
 
             present = False
             for subscriber in self.apns_connections[data['language']]:
                 if subscriber['device_token'] == data['device_token']:
-                    subscriber = data
                     present = True
 
             if not present:
@@ -805,7 +702,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
             self.set_status(200)
 
         except Exception as e:
-            self.logger.error(e)
+            logging.error(e)
             self.send_error(500)
 
 
@@ -898,49 +795,13 @@ class DashboardHandler(BaseHandler):
             for feed in traffic_feed_channels:
                 events_count.append(len(json.loads(open("%s.json" % feed).read())['TrafficEvent']['item']))
 
-            google_subscribers = GoogleCloudMessagingHandler.gcm_connections
-            apple_subscribers = ApplePushNotificationServerHandler.apns_connections
-            web_subscribers = TrafficSocketHandler.channels
-
+            gcm_reg_ids = GoogleCloudMessagingHandler.gcm_connections
             self.render("templates/index.html", username=basicauth_user, sources=sources,
-                traffic_feed_channels=traffic_feed_channels, google_subscribers=google_subscribers,
-                events_count=events_count, apple_subscribers=apple_subscribers, web_subscribers=web_subscribers,
+                traffic_feed_channels=traffic_feed_channels, gcm_reg_ids=gcm_reg_ids, events_count=events_count,
                 packages=packages)
         else:
             self.send_error(403)
 
-@require_basic_auth
-class AnalyticsSubscribersHandler(BaseHandler):
-
-    subscribers_types = ['web', 'apple', 'google']
-    @tornado.web.asynchronous
-    @tornado.gen.engine
-    def get(self, subscriber_type, basicauth_user, basicauth_pass):
-        """
-            Request all user agents for specific TDT package and resource between start_date and end_date if provided.
-            Compute per OS requests percentage and send them back.
-        """
-
-        if self.auth(basicauth_user, basicauth_pass):
-            if subscriber_type in self.subscribers_types:
-                if subscriber_type == "web":
-                    data = {}
-                    for channel in TrafficSocketHandler.channels:
-                        data[channel] = []
-                        for subscriber in TrafficSocketHandler.channels[channel]:
-                            data[channel].append({"uuid" : subscriber.uuid, "coords" : subscriber.coords})
-                elif subscriber_type == "google":
-                    data = GoogleCloudMessagingHandler.gcm_connections
-                elif subscriber_type == "apple":
-                    data = ApplePushNotificationServerHandler.apns_connections
-
-                self.set_header("Content-Type", "text/json; charset=UTF-8")
-                self.write(tornado.escape.json_encode(data))
-                self.finish()
-            else:
-                self.write_error(404)
-        else:
-            self.write_error(403)
 
 @require_basic_auth
 class AnalyticsOSHandler(BaseHandler):
@@ -1434,8 +1295,6 @@ if __name__ == "__main__":
 
     main_loop = tornado.ioloop.IOLoop.instance()
 
-
-
     #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
     #websockets subscribers.
     tornado.ioloop.PeriodicCallback(app.load_webcams, options.webcams_fetch_frequency, io_loop=main_loop).start()
@@ -1446,9 +1305,6 @@ if __name__ == "__main__":
     tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
     tailed_callback.start()
 
-
-
-    feedback_callback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.feedback, 3600000)
-    feedback_callback.start()
-
     main_loop.start()
+    #start a periodic callback to check for invalid token (APNS)
+    apns_feedback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.check_invalid_token())
