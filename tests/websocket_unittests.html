@@ -1,0 +1,102 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+        "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+    <title></title>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+    <script type="text/javascript">
+
+        $(document).ready(function() {
+
+            if(!("WebSocket" in window)){
+
+            }else{
+                //The user has WebSockets
+
+                connect();
+
+                function connect(){
+
+
+
+                    var socket;
+                    var host = "ws://0.0.0.0:8080/socket";
+
+                    try{
+                        socket = new WebSocket(host);
+
+                        socket.onopen = function(){
+                            console.log('Socket Status: '+socket.readyState+' (open)');
+                        };
+
+                        socket.onmessage = function(msg){
+
+                            v = eval('('+msg.data+')');
+                            console.log(v);
+                            if(v['code']==2 && (socket.uuid==null || socket.uuid == undefined)){
+                                socket.uuid = v['uuid'];
+
+                            }
+                        };
+
+                        socket.onclose = function(){
+                            console.log('Socket Status: '+socket.readyState+' (Closed)');
+                        };
+
+                        if (navigator.geolocation)
+                        {
+                            navigator.geolocation.getCurrentPosition(subscribe);
+                            navigator.geolocation.watchPosition(update);
+                        }
+                        else{
+                            console.log("Geolocation is not supported by this browser.");
+                        }
+
+                    } catch(exception){
+                        console.log(exception);
+                    }
+
+                    function subscribe(position) {
+                        if(socket.uuid == null || socket.uuid==undefined){
+                            setTimeout(function(){subscribe(position)}, 1000);
+                        }else{
+                            var message = {
+                                "uuid" : socket.uuid,
+                                "code" : 1,
+                                "coords" : position.coords,
+                                "area" : 50,
+                                "language" : "nl"
+                            };
+                            socket.send(JSON.stringify(message));
+                        }
+
+                    }
+
+                    function update(position) {
+                        if(socket.uuid == null || socket.uuid==undefined){
+                            setTimeout(function(){update(position)}, 1000);
+                        }else{
+                            var message = {
+                                "uuid" : socket.uuid,
+                                "code" : 4,
+                                "coords" : position.coords,
+                                "area" : 50,
+                                "language" : "nl"
+                            };
+                            socket.send(JSON.stringify(message));
+                        }
+
+                    }
+
+                }
+
+            }
+
+        });
+
+    </script>
+</head>
+<body>
+
+</body>
+</html>

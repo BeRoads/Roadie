@@ -1,0 +1,1250 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+        "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+    <title>BeRoads - Dashboard</title>
+    <link rel="shortcut icon" type="image/png" href="/static/img/icon.png" />
+    <link href="/static/css/bootstrap.css" rel="stylesheet">
+    <link href="/static/css/datepicker.css" rel="stylesheet">
+    <link href="/static/css/bootstrap-select.min.css" rel="stylesheet">
+    <link href="/static/css/jquery.pnotify.default.css" rel="stylesheet">
+    <style type="text/css">
+        body {
+            padding-top: 60px;
+            padding-bottom: 40px;
+        }
+	#web_subscribers_map img {
+		max-width: none;
+	}
+	#apple_subscribers_map img {
+		max-width : none;
+	}
+	#google_subscribers_map img {
+		max-width : none;
+	}
+    </style>
+
+</head>
+<body>
+
+<div id="navigation_bar" class="navbar navbar-inverse navbar-fixed-top">
+    <div class="navbar-inner">
+        <div class="container">
+            <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="brand" href="#">BeRoads - DashBoard</a>
+            <ul class="nav pull-right">
+                <li><a href="#" style="color:white"><i class="icon-user icon-white"></i>&nbsp;&nbsp;{{ username }} </a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="container" id="content">
+<div class="span12" >
+<div class="tabbable"> <!-- Only required for left/right tabs -->
+    <ul class="nav nav-tabs">
+        <li class="active"><a href="#tab1" data-toggle="tab">Status</a></li>
+        <li><a href="#tab2" data-toggle="tab">Subscribers</a></li>
+        <li><a href="#tab3" data-toggle="tab">Webcams</a></li>
+        <li><a href="#tab4" data-toggle="tab">Analytics</a></li>
+        <li><a href="#tab5" data-toggle="tab">Logs</a></li>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane active" id="tab1">
+
+                <!-- Example row of columns -->
+                <div class="row">
+                    <div class="span6">
+                        <h2>Deployement</h2>
+                        <table class="table table-hover">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>URL</th>
+                                <th>Command</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td>HTML5 app (production)</td>
+                                <td><a href="http://dev.beroads.com">http://dev.beroads.com</a></td>
+                                <td><button id="deploy_mobile_production" class="btn btn-small btn-info disabled" onclick="deploy_mobile('production');" type="button">Deploy</button></td>
+                            </tr>
+                            <tr>
+                                <td>HTML5 app (testing)</td>
+                                <td><a href="http://m.beroads.com">http://m.beroads.com</a></td>
+                                <td><button id="deploy_mobile_testing" class="btn btn-small btn-info disabled" onclick="deploy_mobile('testing');" type="button">Deploy</button></td>
+                            </tr>
+                            <tr>
+                                <td>The DataTank</td>
+                                <td><a href="http://data.beroads.com">http://data.beroads.com</a></td>
+                                <td><button id="deploy_tdt" class="btn btn-small btn-info disabled" onclick="deploy_tdt();"type="button">Deploy</button></td>
+                            </tr>
+                            <tr>
+                                <td>Website</td>
+                                <td><a href="http://beroads.com">http://beroads.com</a></td>
+                                <td><button id="deploy_website" class="btn btn-small btn-info disabled" onclick="deploy_website();" type="button">Deploy</button></td>
+                            </tr>
+                            </tbody>
+
+                        </table>
+
+                    </div>
+                    <div class="span6">
+                        <h2>Sources status</h2>
+                        <table class="table table-hover">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>URL</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for source in sources %}
+
+                            <tr>
+                                <td>{{ source['name'] }}</td>
+                                <td><a href="{{ source['url'] }}">{{ source['url'] }}</a></td>
+                                {% if source['status'] == 200 %}
+                                    <td><span class="label label-success">Alive ({{source['response_time']}} s.)</span></td>
+                                {% else %}
+                                    <td><span class="label label-important">Down</span></td>
+                                {% end %}
+                            </tr>
+                            {% end %}
+                            </tbody>
+
+                        </table>
+            </span>
+                    </div>
+                    </div>
+                <div class="row"><hr/></div>
+
+        </div>
+        <div class="tab-pane span12" id="tab2">
+
+        <div class="tabbable"> <!-- Only required for left/right tabs -->
+        <ul class="nav nav-tabs">
+            <li class="active"><a href="#web_subscribers" data-toggle="tab">Web</a></li>
+            <li><a href="#google_subscribers" data-toggle="tab">Google</a></li>
+            <li><a href="#apple_subscribers" data-toggle="tab">Apple</a></li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane active" id="web_subscribers">
+            <div class="row">
+                <div class="span6"><h2>Traffic feed channels</h2>
+                    <table class="table table-hover">
+                        <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Events</th>
+                            <th>Subscribers</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for i in range(0, len(web_subscribers)) %}
+
+                        <tr>
+                            <td>{{ web_subscribers.keys()[i].upper()}}</td>
+                            <td>{{ events_count[i]}}</td>
+                            <td>{{ len(web_subscribers.values()[i]) }}</td>
+                        </tr>
+                        {% end %}
+                        </tbody>
+
+                    </table>
+                </div>
+            </div>
+            <div class="row">
+                <hr/>
+            </div>
+            <div class="row">
+                <div class="span12">
+                    <div id="web_subscribers_map" style="height:50pc;"></div>
+                </div>
+            </div>
+            </div>
+            <div class="tab-pane" id="google_subscribers">
+            <div class="row">
+                <div class="span6"><h2>Google subscribers</h2>
+                    <table class="table table-hover">
+                        <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Events</th>
+                            <th>Subscribers</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for i in range(0, len(google_subscribers)) %}
+
+                        <tr>
+                            <td>{{ google_subscribers.keys()[i].upper()}}</td>
+                            <td>{{ events_count[i]}}</td>
+                            <td>{{ len(google_subscribers.values()[i]) }}</td>
+                        </tr>
+                        {% end %}
+                        </tbody>
+
+                    </table>
+                </div>
+
+            </div>
+                <div class="row">
+                    <hr/>
+                </div>
+                <div class="row">
+                    <div class="span12">
+                        <div id="google_subscribers_map" style="padding: 0 0 0 0;height:25pc;"></div>
+                    </div>
+                </div>
+                </div>
+            <div class="tab-pane" id="apple_subscribers">
+            <div class="row">
+                <div class="span6"><h2>Apple subscribers</h2>
+                    <table class="table table-hover">
+                        <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Events</th>
+                            <th>Subscribers</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for i in range(0, len(apple_subscribers)) %}
+
+                        <tr>
+                            <td>{{ apple_subscribers.keys()[i].upper()}}</td>
+                            <td>{{ events_count[i]}}</td>
+                            <td>{{ len(apple_subscribers.values()[i]) }}</td>
+                        </tr>
+                        {% end %}
+                        </tbody>
+
+                    </table>
+                </div>
+            </div>
+                <div class="row">
+                    <hr/>
+                </div>
+                <div class="row">
+                    <div class="span12">
+                        <div id="apple_subscribers_map" style="padding: 0 0 0 0;height:25pc;cursor:pointer;"></div>
+                    </div>
+                </div>
+
+                </div>
+
+        </div>
+        </div>
+        </div>
+        <div class="tab-pane span12" id="tab3">
+
+            <div class="row" id="webcams_grid">
+
+        </div>
+            </div>
+        <div class="tab-pane" id="tab4">
+
+            <div class="row">
+                <div class="span12">
+                    <form class="form-inline">
+                        From: <input type="text" class="input-small" data-date-format="dd-mm-yyyy" value="" id="dpd1" >
+                        To: <input type="text" class="input-small" data-date-format="dd-mm-yyyy" value="" id="dpd2" >
+
+
+                        <select id="resource" class="selectpicker pull-right">
+
+                        </select>
+
+                        <select id="package" class="selectpicker pull-right">
+                            <option value="all">All</option>
+                        {% for package in packages.keys() %}
+                            <option>{{ package }}</option>
+                        {% end %}
+                        </select>
+
+                    </form>
+
+                        <hr/>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="progress span12">
+                        <div class="bar" id="progressBar" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="span12">
+                        <h2>Hits</h2>
+                        <p><ul id="frequency" class="nav nav-pills">
+                        <li value='daily' >
+                            <a href="#" onclick="loadHitsChart(getFrequency(),
+                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
+                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
+                            $('#package').val(),
+                            $('#resource').val());">Daily</a>
+                        </li>
+                        <li value='weekly' ><a href="#" onclick="loadHitsChart(getFrequency(),
+                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
+                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
+                            $('#package').val(),
+                            $('#resource').val());">Weekly</a></li>
+                        <li value='monthly' class="active"><a href="#" onclick="loadHitsChart(getFrequency(),
+                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
+                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
+                            $('#package').val(),
+                            $('#resource').val());">Monthly</a></li>
+                        <li value='yearly' ><a href="#" onclick="loadHitsChart(getFrequency(),
+                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
+                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
+                            $('#package').val(),
+                            $('#resource').val());">Yearly</a></li>
+                    </ul></p>
+                       </div>
+                    </div>
+            <div class="row">
+                <span id="hits_line" class="span12" style="height:300px;width:1100px;"></span>
+            </div>
+
+            <hr/>
+
+            <div id="myCarousel" style="height:400px" class="carousel slide">
+                <ol class="carousel-indicators">
+                    <li data-target="#myCarousel" data-slide-to="0" class="active"></li>
+                    <li data-target="#myCarousel" data-slide-to="1"></li>
+                    <li data-target="#myCarousel" data-slide-to="2"></li>
+                    <li data-target="#myCarousel" data-slide-to="3"></li>
+                </ol>
+                <!-- Carousel items -->
+                <div class="carousel-inner">
+                    <div class="active item"><h2>Browsers</h2><span class="span6 offset2" id="browsers_pie"></span></div>
+                    <div class="item"><h2>Mobile Browsers</h2><span class="span6 offset2" id="mobile_browsers_pie"></span></div>
+                    <div class="item"><h2>Operating System</h2><span class="span6 offset2"  id="os_pie"></span></div>
+                    <div class="item"><h2>Languages</h2><span class="span6 offset2" id="languages_pie"></span></div>
+                </div>
+                <!-- Carousel nav -->
+                <a class="carousel-control left" href="#myCarousel" data-slide="prev">&lsaquo;</a>
+                <a class="carousel-control right" href="#myCarousel" data-slide="next">&rsaquo;</a>
+            </div>
+
+            <hr/>
+
+            <div class="row">
+                <div class="span12">
+                    <h2>HeatMap</h2>
+                </div>
+            </div>
+
+            <div class="row">
+                <div id="heatmapArea" class="span12" style="padding: 0 0 0 0;height:25pc;cursor:pointer;"></div>
+            </div>
+        </div>
+
+        <div class="tab-pane" id="tab5">
+                <div class="row">
+                    <div class="span12">
+                        <h2>Console [beroads.log]</h2>
+            <pre id="logs" style="height:20pc; overflow-y: scroll;">
+
+</pre>
+
+                    </div>
+                </div>
+
+        </div>
+    </div>
+</div>
+
+</div>
+
+</div>
+
+
+<!-- Le javascript
+    ================================================== -->
+<!-- Placed at the end of the document so the pages load faster -->
+<script type="text/javascript" src="/static/js/jquery.js"></script>
+<script type="text/javascript" src="/static/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="/static/js/bootstrap-datepicker.js"></script>
+<script type="text/javascript" src="/static/js/bootstrap-select.min.js"></script>
+<script type="text/javascript" src="/static/js/jquery.pnotify.min.js"></script>
+<script type="text/javascript" src="/static/js/ext-core.js"></script>
+<script type="text/javascript" src="/static/js/ext-chart.js"></script>
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?libraries=visualization&sensor=false"></script>
+
+<script type="text/javascript">
+
+    var languagesPie, hitsChart, browsersPie, mobileBrowsersPie, osPie, heatMap, webSubscribersMap, googleSubscribersMap,
+            appleSubscribersMap, map, checkin, checkout;
+    var loaded = 0;
+
+    var deploy_tdt = function(){
+        try {
+            $('#deploy_tdt').html('Deploying ...');
+            var url = '/deployment/tdt';
+            $.getJSON(url)
+                    .done(function(data) {
+                        if(data.success){
+                            $.pnotify({
+                                title: 'TDT Deployment',
+                                text: 'TDT correctly deployed.',
+                                type: 'info'
+                            });
+                        }else{
+                            $.pnotify({
+                                title: 'TDT Deployment',
+                                text: 'An error occured while deploying TDT.',
+                                type: 'error'
+                            });
+                        }
+
+                    })
+                    .fail(function(){
+                        $.pnotify({
+                            title: 'TDT Deployment',
+                            text: 'An error occured while deploying TDT.',
+                            type: 'error'
+                        });
+                    })
+                    .complete(function(){
+                        $('#deploy_tdt').html('Deploy');
+                    });
+        }catch(err){
+            $.pnotify({
+                title: 'TDT Deployment',
+                text: 'An error occured while deploying TDT.',
+                type: 'error'
+            });
+        }
+    };
+
+    var deploy_mobile = function(deployment_type) {
+        try {
+            $('#deploy_mobile_'+deployment_type).html('Deploying ...');
+            var url = '/deployment/mobile';
+            $.getJSON(url,
+                    {
+                        deployment_type : deployment_type
+                    })
+                    .done(function(data) {
+                        if(data.success){
+                            $.pnotify({
+                                title: 'Mobile deployment',
+                                text: 'Mobile ('+deployment_type+') correctly deployed.',
+                                type: 'info'
+                            });
+                        }else{
+                            $.pnotify({
+                                title: 'Mobile Deployment',
+                                text: 'An error occured while deploying Mobile ('+deployment_type+').',
+                                type: 'error'
+                            });
+                        }
+
+                    })
+                    .fail(function(){
+                        $.pnotify({
+                            title: 'Mobile Deployment',
+                            text: 'An error occured while deploying Mobile ('+deployment_type+').',
+                            type: 'error'
+                        });
+                    })
+                    .complete(function(){
+                        $('#deploy_mobile_'+deployment_type).html('Deploy');
+                    });
+        }catch(err){
+            $.pnotify({
+                title: 'Mobile Deployment',
+                text: 'An error occured while deploying Mobile ('+deployment_type+').',
+                type: 'error'
+            });
+        }
+    };
+
+    var deploy_website = function() {
+        try {
+            $('#deploy_website').html('Deploying ...');
+            var url = '/deployment/website';
+            $.getJSON(url,
+                    {
+                        deployment_type : deployment_type
+                    })
+                    .done(function(data) {
+                        if(data.success){
+                            $.pnotify({
+                                title: 'Website deployment',
+                                text: 'Website correctly deployed.',
+                                type: 'info'
+                            });
+                        }else{
+                            $.pnotify({
+                                title: 'Website Deployment',
+                                text: 'An error occured while deploying website.',
+                                type: 'error'
+                            });
+                        }
+
+                    })
+                    .fail(function(){
+                        $.pnotify({
+                            title: 'Website Deployment',
+                            text: 'An error occured while deploying website.',
+                            type: 'error'
+                        });
+                    })
+                    .complete(function(){
+                        $('#deploy_website').html('Deploy');
+                    });
+        }catch(err){
+            $.pnotify({
+                title: 'Website Deployment',
+                text: 'An error occured while deploying website.',
+                type: 'error'
+            });
+        }
+    };
+    var getFrequency = function() {
+        var frequency;
+        $('#frequency').find('li').each(function(){
+            var current = $(this);
+            if(current.hasClass('active')){
+                frequency = current.attr('value');
+            }
+        });
+        return frequency;
+    };
+
+    var buildWebSubscribersMap = function(data){
+
+        var brussels = new google.maps.LatLng(50.50871, 4.20361);
+	
+        webSubscribersMap = new google.maps.Map(document.getElementById('web_subscribers_map'), {
+            center: brussels,
+            zoom: 7,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+	
+	$.each(data, function(key, val) {
+            $.each(data[key], function(key2, val2) {
+          	var myLatLng = new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude);
+		var marker = new google.maps.Marker({
+                        position : myLatLng,
+                        map : webSubscribersMap,
+                        title : val2.uuid
+                });
+		console.log(marker);
+            });
+        });
+    };
+
+    var buildAppleSubscribersMap = function(data){
+
+        var brussels = new google.maps.LatLng(50.50871, 4.20361);
+
+        appleSubscribersMap = new google.maps.Map(document.getElementById('apple_subscribers_map'), {
+            center: brussels,
+            zoom: 7,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+    
+	$.each(data, function(key, val) {
+            $.each(data[key], function(key2, val2) {
+                console.log(val2);
+		var marker = new google.maps.Marker({
+                        position : new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude),
+                        map : appleSubscribersMap,
+                        title : val2.device_token
+                });
+            });
+        });
+    };
+
+    var buildGoogleSubscribersMap = function(data){
+
+        var brussels = new google.maps.LatLng(50.50871, 4.20361);
+
+        googleSubscribersMap = new google.maps.Map(document.getElementById('google_subscribers_map'), {
+            center: brussels,
+            zoom: 7,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+        $.each(data, function(key, val) {
+            $.each(data[key], function(key2, val2) {
+		var marker = new google.maps.Marker({
+			position : new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude),
+			map : googleSubscribersMap,
+			title : val2.registration_id
+		});
+	    });
+        });
+    };
+
+
+
+    /**
+     *
+     * @param startDate
+     * @param endDate
+     * @param package
+     * @param resource
+     */
+    var buildHeatMap = function(data){
+
+            var heatmapData = [];
+            var brussels = new google.maps.LatLng(50.50871, 4.20361);
+
+            map = new google.maps.Map(document.getElementById('heatmapArea'), {
+                center: brussels,
+                zoom: 7,
+                mapTypeId: google.maps.MapTypeId.ROADMAP
+            });
+            $.each(data, function(key, val) {
+                heatmapData.push(new google.maps.LatLng(val.lat, val.lng));
+            });
+
+            heatMap = new google.maps.visualization.HeatmapLayer({
+                data: heatmapData,
+                radius : 15,
+                opacity : 0.8
+
+            });
+            heatMap.setMap(map);
+            loaded++;
+
+    };
+
+    var buildHitsChart = function(data){
+        var hitsStore = new Ext.data.JsonStore({
+            fields: ['name', 'total'],
+            data: data
+        });
+        hitsChart = new Ext.chart.Chart({
+            id : 'hitsChart',
+            width : 1100,
+            height: 300,
+            layout: 'fit',
+            hidden: false,
+            maximizable: true,
+            title: 'Line Chart',
+            renderTo: Ext.get('hits_line'),
+
+            style: 'background:#fff',
+            animate: true,
+            store: hitsStore,
+            axes: [
+                {
+                    type: 'Numeric',
+                    minimum: 0,
+                    position: 'left',
+                    fields: ['total'],
+                    title: 'Hits',
+                    minorTickSteps: 1,
+                    grid: true
+                },
+                {
+                    type: 'Category',
+                    position: 'bottom',
+                    fields: ['name'],
+                    title: 'Time'
+                }
+            ],
+            series: [
+                {
+                    type: 'line',
+                    displayName: 'Hits',
+                    yField: 'total',
+                    xField : 'name',
+                    style: {
+                        'stroke-width': 2,
+                        color: '#16A085'
+                    }
+                }
+            ]
+        });
+    };
+    /**
+     *
+     * @param frequency
+     * @param package
+     * @param resource
+     */
+    var loadHitsChart = function(frequency, startDate, endDate, package, resource){
+
+        try {
+            var url = '/analytics/hit/'+package+'/'+resource+'/'+frequency+'?';
+            $.getJSON(url,
+                    {
+                        start_date : startDate,
+                        end_date : endDate
+                    })
+                    .done(function(data) {
+                        if(data.length>0){
+                            if(hitsChart == undefined || hitsChart == null){
+                                $('#hits_line').html("");
+                                buildHitsChart(data);
+
+                            }else{
+                                hitsChart.store.loadData(data);
+                                hitsChart.redraw();
+                            }
+                        }else{
+                            $('#hits_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                                    "Not enough data, consider modifying dates parameters</div>");
+                        }
+                    })
+                    .fail(function(){$('#hits_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#hits_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+
+    var buildBrowsersPie = function(data) {
+        var browserStore = new Ext.data.JsonStore({
+            fields: ['name', 'total'],
+            data: data
+        });
+
+        browsersPie = new Ext.chart.Chart({
+            id : 'browsersPie',
+            width: 600,
+            height: 300,
+            hidden: false,
+            maximizable: false,
+            animate: false,
+            store: browserStore,
+            renderTo: Ext.get('browsers_pie'),
+            shadow: false,
+            legend: {
+                position: 'right',
+                padding: 10
+            },
+            series: [{
+                type: 'pie',
+                field: 'total',
+                showInLegend: true
+            }]
+        });
+    };
+
+    /**
+     *
+     * @param startDate
+     * @param endDate
+     * @param package
+     * @param resource
+     */
+    var loadBrowsersPie =function(startDate, endDate, package, resource){
+        try{
+            var url = '/analytics/browser/'+package+'/'+resource+'?';
+            $.getJSON(url,
+                    {
+                        start_date : startDate,
+                        end_date : endDate
+                    })
+                    .done(function(data) {
+                        if(data.length>0){
+                            if(browsersPie == undefined || browsersPie == null){
+                                $('#browsers_pie').html("");
+                                buildBrowsersPie(data);
+                            }else{
+                                browsersPie.store.loadData(data);
+                                browsersPie.redraw();
+                            }
+                        }else{
+                            $('#browsers_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                                    "Not enough data, consider modifying dates parameters</div>");
+                        }
+                    })
+                    .fail(function(){$('#browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+
+    };
+
+
+    var buildMobileBrowsersPie = function(data) {
+        var mobileBrowserStore = new Ext.data.JsonStore({
+            fields: ['name', 'total'],
+            data: data
+        });
+
+        mobileBrowsersPie = new Ext.chart.Chart({
+            id : 'mobileBrowsersPie',
+            width: 600,
+            height: 300,
+            hidden: false,
+            maximizable: false,
+            animate: false,
+            store: mobileBrowserStore,
+            renderTo: Ext.get('mobile_browsers_pie'),
+            shadow: false,
+            legend: {
+                position: 'right',
+                padding: 10
+            },
+            series: [{
+                type: 'pie',
+                field: 'total',
+                showInLegend: true
+            }]
+        });
+    };
+    /**
+     *
+     * @param startDate
+     * @param endDate
+     * @param package
+     * @param resource
+     */
+    var loadMobileBrowsersPie = function(startDate, endDate, package, resource){
+
+        try{
+            var url = '/analytics/mobile/'+package+'/'+resource+'?';
+            $.getJSON(url,
+                    {
+                        start_date : startDate,
+                        end_date : endDate
+                    })
+                    .done(function(data) {
+                        if(data.length>0){
+                            if(mobileBrowsersPie == undefined || mobileBrowsersPie == null){
+                                $('#mobile_browsers_pie').html("");
+                                buildMobileBrowsersPie(data);
+                            }else{
+                                mobileBrowsersPie.store.loadData(data);
+                                mobileBrowsersPie.redraw();
+                            }
+                        }else{
+                            $('#mobile_browsers_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                                    "Not enough data, consider modifying dates parameters</div>");
+                        }
+                    })
+                    .fail(function(){$('#mobile_browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#mobile_browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+
+    };
+
+    var buildOSPie = function(data) {
+
+        var osStore = new Ext.data.JsonStore({
+            fields: ['name', 'total'],
+            data: data
+        });
+
+        osPie = new Ext.chart.Chart({
+            id : 'osPie',
+            width: 600,
+            height: 300,
+            hidden: false,
+            maximizable: false,
+            animate: false,
+            store: osStore,
+            renderTo: Ext.get('os_pie'),
+            shadow: false,
+            legend: {
+                position: 'right',
+                padding: 10
+            },
+            series: [{
+                type: 'pie',
+                field: 'total',
+                showInLegend: true
+            }]
+        });
+    };
+    /**
+     *
+     * @param startDate
+     * @param endDate
+     * @param package
+     * @param resource
+     */
+    var loadOSPie = function(startDate, endDate, package, resource){
+
+        try{
+            var url = '/analytics/os/'+package+'/'+resource+'?';
+            $.getJSON(url,
+                    {
+                        start_date : startDate,
+                        end_date : endDate
+                    })
+                    .done(function(data) {
+                        if(data.length>0){
+                            if(osPie == undefined || osPie == null){
+                                $('#os_pie').html("");
+                                buildOSPie(data);
+                            }else{
+                                osPie.store.loadData(data);
+                                osPie.redraw();
+                            }
+                        }else{
+                            $('#os_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                                    "Not enough data, consider modifying dates parameters</div>");
+                        }
+                    })
+                    .fail(function(){$('#os_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#os_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+    var buildLanguagesPie = function(data) {
+        var languageStore = new Ext.data.JsonStore({
+            fields: ['name', 'total'],
+            data: data
+        });
+        languagesPie = new Ext.chart.Chart({
+            id : 'languagesPie',
+            width: 600,
+            height: 300,
+            hidden: false,
+            maximizable: false,
+            animate: false,
+            store: languageStore,
+            renderTo: Ext.get('languages_pie'),
+            shadow: false,
+            legend: {
+                position: 'right',
+                padding: 10
+            },
+            series: [{
+                type: 'pie',
+                field: 'total',
+                showInLegend: true
+            }]
+        });
+
+    };
+    /**
+     *
+     * @param startDate
+     * @param endDate
+     * @param package
+     * @param resource
+     */
+    var loadLanguagesPie = function(startDate, endDate, package, resource){
+
+        try{
+            var url = '/analytics/language/'+package+'/'+resource+'?';
+            $.getJSON(url,
+                    {
+                        start_date : startDate,
+                        end_date : endDate
+                    })
+                    .done(function(data) {
+
+                        if(data.length>0){
+                            if(languagesPie == undefined || languagesPie == null){
+                                $('#languages_pie').html("");
+                                buildLanguagesPie(data);
+                            }else{
+                                languagesPie.store.loadData(data);
+                                languagesPie.redraw();
+                            }
+                        }else{
+                            $('#languages_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                                    "Not enough data, consider modifying dates parameters</div>");
+                        }
+                    })
+                    .fail(function(){$('#languages_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#languages_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+    var loadHeatMap = function(startDate, endDate, package, resource) {
+
+        try{
+            var url = '/analytics/coordinates/'+package+'/'+resource+'?';
+            $.getJSON(url,
+                    {
+                        start_date :startDate,
+                        end_date : endDate
+                    }
+            )
+            .done(function(data) {
+
+                if(data.length>0){
+                    $('#heatmapArea').html('');
+                    if(heatMap == undefined || heatMap == null){
+                        buildHeatMap(data);
+                    }else{
+                        heatMap.setMap(null);
+                        var heatMapData = [];
+                        $.each(data, function(key, val) {
+                            heatMapData.push(new google.maps.LatLng(val.lat, val.lng));
+                        });
+                        heatMap.data = heatMapData;
+                        heatMap.setMap(map);
+                    }
+                }else{
+                    $('#heatmapArea').html("<div class='alert'><strong>Empty ! </strong>" +
+                            "Not enough data, consider modifying dates parameters</div>");
+                }
+            })
+            .fail(function(){$('#heatmapArea').html($('#heatmapArea').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>"));})
+            .complete(function(){loaded++;});
+        }catch(err){
+            $('#heatmapArea').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+    var loadWebSubscribersMap = function() {
+
+        try{
+            var url = '/analytics/subscribers/web';
+            $.getJSON(url)
+                    .done(function(data) {
+                            $('#web_subscribers_map').html('');
+                            if(webSubscribersMap == undefined || heatMap == null){
+                                buildWebSubscribersMap(data);
+                            }else{
+				webSubscribersMap.setMap(null);
+			    	buildWebSubscribersMap(data);
+			    }                   	
+                    })
+                    .fail(function(){$('#web_subscribers_map').html($('#web_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>"));})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#web_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+    var loadGoogleSubscribersMap = function() {
+
+        try{
+            var url = '/analytics/subscribers/google';
+            $.getJSON(url)
+                    .done(function(data) {
+
+                            $('#google_subscribers_map').html('');
+                            if(googleSubscribersMap == undefined || heatMap == null){
+                                buildGoogleSubscribersMap(data);
+                            }else{
+                                googleSubscribersMap.setMap(null);
+                               buildGoogleSubscribersMap(data);
+			     }
+                    })
+                    .fail(function(){$('#google_subscribers_map').html($('#google_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>"));})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#google_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+    var loadAppleSubscribersMap = function() {
+
+        try{
+            var url = '/analytics/subscribers/apple';
+            $.getJSON(url)
+                    .done(function(data) {
+
+                            $('#apple_subscribers_map').html('');
+                            if(appleSubscribersMap == undefined || heatMap == null){
+                                buildAppleSubscribersMap(data);
+                            }else{
+                                appleSubscribersMap.setMap(null);
+                                    buildAppleSubscribersMap(data);
+			 }
+                    })
+                    .fail(function(){$('#apple_subscribers_map').html($('#apple_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>"));})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#apple_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+
+    var reloadInterface = function() {
+        /**
+         * Reload every graph / chart of the analytics tab
+         * with currently selected values (datepickers, resource and package)
+         * @type {number}
+         */
+        loaded = 0;
+        loadWebSubscribersMap();
+        loadGoogleSubscribersMap();
+        loadAppleSubscribersMap();
+        $('#progressBar').width('O%');
+        loadHitsChart(getFrequency(), Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
+        //loadLanguagesPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
+        //loadBrowsersPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
+        //loadMobileBrowsersPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
+        //loadOSPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadHeatMap(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
+        checkLoading();
+    };
+
+    var loadWebcams = function(){
+        /**
+         * Fetch webcams data from BeRoads TDT and display them in a bootstrap thumbnails grid.
+         * Images updates themselves every 2 minutes.
+         * @type {string}
+         */
+        var webcamsGrid = "<ul class='thumbnails'>";
+
+        try{
+            var url = 'http://data.beroads.com/IWay/Camera.json';
+            $.getJSON(url)
+                    .done(function(data) {
+
+                        $.each(data.Camera.item, function(k,v){
+                            webcamsGrid += "<li class='span3'><div class='thumbnail'>" +
+                                    "<img id='webcam"+ v.id+ "' src='"+v.img+"' " +
+                                    "onload=\"setTimeout(function(){$('#webcam"+ v.id+"').src='"+v.img+"?'+new Date().getMilliseconds();}, 60000)\" alt='"+v.city+"'>" +
+                                    "<div class='caption'><p>"+ v.city+"</p></div></div></li>";
+                        });
+
+                        webcamsGrid += "</ul>"
+                        $('#webcams_grid').html(webcamsGrid);
+                    })
+                    .fail(function(){$('#webcams_grid').html($('#webcams_grid').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>"));})
+                    .complete(function(){loaded++;});
+        }catch(err){
+            $('#webcams_grid').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
+    };
+
+
+    var checkLoading = function() {
+        /**
+         * Update the loading bar while we are fetching analytics data.
+         */
+        if(loaded < 2){
+            var $bar = $('.bar');
+            $bar.width(parseInt((100/6)*loaded)+"%");
+            $bar.text(parseInt((100/6)*loaded)+"%");
+            setTimeout(function(){checkLoading();}, 1000);
+        }else{
+            var $bar = $('.bar');
+            $bar.width("100%");
+            $bar.text("100%");
+        }
+    };
+
+    $(document).ready(function() {
+
+        //setup websocket connection for log file
+        socket = new WebSocket('ws://0.0.0.0:8080/analytics/logs');
+        socket.onopen = function() { console.log('socket ouverte'); };
+        socket.onclose = function() { console.log('socket fermée'); };
+        socket.onerror = function() { console.log('Une erreur est survenue'); };
+        socket.onmessage = function(msg){
+            $("#logs").append(msg.data);
+        };
+        window.onbeforeunload = function() {
+            socket.onclose = function () {}; // disable onclose handler first
+            socket.close()
+        };
+
+        //bind bootstrap custom elements
+        $('.carousel').carousel();
+
+        $('ul.nav.nav-pills li a').click(function() {
+            $(this).parent().addClass('active').siblings().removeClass('active');
+        });
+
+        //package and resources selector
+        $('#resource').append('<option value="all">All</option>').val('all');
+        $('#resource').prop('disabled',true);
+
+        $('#resource').change(function(){
+            reloadInterface();
+        });
+        $('#package').change(function(){
+            var packages = {{ packages }};
+            $('#resource')
+                    .find('option')
+                    .remove()
+                    .end();
+
+            if($(this).val()=="all"){
+                $('#resource').prop('disabled',true);
+            }else{
+                $('#resource').prop('disabled',false);
+                $.each(packages[$(this).val()], function(key, value){
+                    $('#resource').append('<option value="'+value+'">'+value+'</option>')
+                            .val(value);
+                });
+                $('#resource').append('<option value="all">All</option>')
+                        .val('all');
+            }
+            reloadInterface();
+        });
+
+
+        //datepickers
+        var startDate = new Date(new Date().getFullYear(), 0, 1);
+        var endDate = new Date();
+
+        checkin = $('#dpd1').datepicker({
+            onRender: function(date) {
+                return date.valueOf();
+            }
+        }).on('changeDate', function(ev) {
+                    if (ev.date.valueOf() > checkout.date.valueOf()) {
+                        var newDate = new Date(ev.date);
+                        newDate.setDate(newDate.getDate() + 1);
+                        checkout.setValue(newDate);
+                    }
+                    checkin.hide();
+                    $('#dpd2')[0].focus();
+                }).data('datepicker');
+
+        checkout = $('#dpd2').datepicker({
+            onRender: function(date) {
+                return date.valueOf();
+            }
+        }).on('changeDate', function(ev) {
+                    checkout.hide();
+                    reloadInterface();
+        }).data('datepicker');
+
+
+        checkin.setValue(startDate);
+        checkout.setValue(endDate);
+
+        reloadInterface();
+        loadWebcams();
+
+    });
+</script>
+
+</body>
+</html>
