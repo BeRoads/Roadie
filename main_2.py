@@ -327,30 +327,32 @@ class Application(tornado.web.Application):
 
         # Twitter
         for event in events['TrafficEvent']['item']:
-            share_url = "http://beroads.com/event/%s"%event['id']
-            place_id = None
 
-            auth = OAuth1(options.twitter_consumer_key, options.twitter_consumer_secret,
-                options.twitter_access_token_key, options.twitter_access_token_key)
-            payload = {'lat' : event['lat'], 'long' : event['lng']}
-            r = requests.get('https://api.twitter.com/1.1/geo/search.json', params=payload, auth=auth)
+            if int(event['time']) > time.time()-(60*60*24):
+                share_url = "http://beroads.com/event/%s"%event['id']
+                place_id = None
 
-            if r.status_code==200:
-                result = json.loads(r.content)
-                if len(result['result']['places']):
-                    place_id = result['result']['places'][0]['id']
+                auth = OAuth1(options.twitter_consumer_key, options.twitter_consumer_secret,
+                    options.twitter_access_token_key, options.twitter_access_token_key)
+                payload = {'lat' : event['lat'], 'long' : event['lng']}
+                r = requests.get('https://api.twitter.com/1.1/geo/search.json', params=payload, auth=auth)
 
-            status = "%s ... %s"%(
-                event['location'][0:(140-len(share_url)-4)], share_url)
+                if r.status_code==200:
+                    result = json.loads(r.content)
+                    if len(result['result']['places']):
+                        place_id = result['result']['places'][0]['id']
 
-            logger.info("Publishing status : %s on Twitter..."%status)
+                status = "%s ... %s"%(
+                    event['location'][0:(140-len(share_url)-4)], share_url)
 
-            self.twitter_bot.PostUpdate(status=status,
-                latitude=event['lat'],
-                longitude=event['lng'],
-                place_id=place_id,
-                display_coordinates=True
-            )
+                logger.info("Publishing status : %s on Twitter..."%status)
+
+                self.twitter_bot.PostUpdate(status=status,
+                    latitude=event['lat'],
+                    longitude=event['lng'],
+                    place_id=place_id,
+                    display_coordinates=True
+                )
 
         callback(True)
 
