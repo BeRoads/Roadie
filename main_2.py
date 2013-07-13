@@ -392,7 +392,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(tornado.escape.json_encode(ack))
 
     def on_close(self):
-        self.channels[self.config['language']].remove(self)
+        self.channels[self.language].remove(self)
 
     @classmethod
     def publish(cls, channel, message):
