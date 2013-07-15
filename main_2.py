@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from daemon import Daemon
 
 import tornado.escape
 import tornado.ioloop
@@ -328,7 +329,7 @@ class Application(tornado.web.Application):
         # Twitter
         for event in events['TrafficEvent']['item']:
 
-            if int(event['time']) > time.time()-(60*60*24):
+            if int(event['time']) > time.time()-(60*60*2):
                 share_url = "http://beroads.com/event/%s"%event['id']
                 place_id = None
 
@@ -1349,28 +1350,45 @@ class AnalyticsMobileHandler(BaseHandler):
         return
 
 
+class Tornaemon(Daemon):
+
+    def run(self):
+
+        app = Application()
+        app.listen(options.port)
+        logging.info("Starting BeRoads webserver on address %s:%s" % (options.ip, options.port))
+        main_loop = tornado.ioloop.IOLoop.instance()
+
+        #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
+        #websockets subscribers.
+        tornado.ioloop.PeriodicCallback(app.load_traffic, options.traffic_fetch_frequency, io_loop=main_loop).start()
+
+        #start a periodic callback to tail our log file and send new line to websocket client
+        tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
+        tailed_callback.start()
+
+        feedback_callback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.feedback, 3600000)
+        feedback_callback.start()
+
+        main_loop.start()
+
+
 if __name__ == "__main__":
-    tornado.options.parse_command_line()
-    app = Application()
-    app.listen(options.port)
-    logging.info("Starting BeRoads webserver on address %s:%s" % (options.ip, options.port))
 
-    main_loop = tornado.ioloop.IOLoop.instance()
-
-
-
-    #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
-    #websockets subscribers.
-    tornado.ioloop.PeriodicCallback(app.load_traffic, options.traffic_fetch_frequency, io_loop=main_loop).start()
-
-
-    #start a periodic callback to tail our log file and send new line to websocket client
-    tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
-    tailed_callback.start()
-
+    daemon = Tornaemon('/var/run/beroads_tornado.pid')
+    if len(sys.argv) == 2:
+        if 'start' == sys.argv[1]:
+            daemon.start()
+        elif 'stop' == sys.argv[1]:
+            daemon.stop()
+        elif 'restart' == sys.argv[1]:
+            daemon.restart()
+        else:
+            print "Unknown command"
+            sys.exit(2)
+        sys.exit(0)
+    else:
+        print "usage: %s start|stop|restart" % sys.argv[0]
+        sys.exit(2)
 
 
-    feedback_callback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.feedback, 3600000)
-    feedback_callback.start()
-
-    main_loop.start()
