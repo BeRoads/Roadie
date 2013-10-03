@@ -159,10 +159,38 @@ define("apns_certificate", "beroads.pem")
 define("gcm_api_key", "AIzaSyC_UN1QUzNZLsyWzCbL2HIDglgN92b5FxY")
 define("apns_sandbox_mode", True)
 
-define("twitter_consumer_key", "iteQq6eatYKJwTKfcHcyFQ")
-define("twitter_consumer_secret", "m1V9bs5q1XTejV1MqM6rmGqonNeARoCqS5aO33TxE")
-define("twitter_access_token_key", "351441174-ykJ5w2V5zCcilP3nHb4ihCWXMkPdM03VuAd9s9w2")
-define("twitter_access_token_secret", "d1KIcR6ZYxU5c6Pf7uqjQ88gb46yHyBEEGGY3hrw2Y")
+define("twitter_keys", {
+    "main" : {
+        "consumer_key" : "iteQq6eatYKJwTKfcHcyFQ",
+        "consumer_secret" : "m1V9bs5q1XTejV1MqM6rmGqonNeARoCqS5aO33TxE",
+        "access_token_key" : "351441174-ykJ5w2V5zCcilP3nHb4ihCWXMkPdM03VuAd9s9w2",
+        "access_token_secret" : "d1KIcR6ZYxU5c6Pf7uqjQ88gb46yHyBEEGGY3hrw2Y"
+    },
+    "fr" : {
+        "consumer_key" : "lekthlGntaYeyQFkyXCbQ",
+        "consumer_secret" : "6uABinIZpR5YGrvFeLS6pp2EyF8dXgJEvzddfhU",
+        "access_token_key" : "1890991999-91RGMHrTrCgO8Ll9s91zrJ6XZrakVvlLjnA4pXR",
+        "access_token_secret" : "hMhmFWwbUXqON7rwDaVogFm9ZQsO5Zr87VhosxDmg"
+    },
+    "nl" : {
+        "consumer_key" : "gwC5BwkZxXaS6KEzRQRHow",
+        "consumer_secret" : "NYHcj5gII0CwrY49FuwjWqpSWHfRRQyQVYJta0SPhQ",
+        "access_token_key" : "1890943374-mIlGMbcF5Wnz38UyCvIuP0c0UwsEYdS9Zs3Xsr1",
+        "access_token_secret" : "teHOaVcNY69itdoAnyGV3yuoKtMCaxUJ0ZoV98jwSU"
+    },
+    "de" : {
+        "consumer_key" : "cNX9Fazas6rFyvBZXyEQ",
+        "consumer_secret" : "mDcEC5lulc6mXxnBCZI7PppJOhRLY3cu245Mlb00Yh0",
+        "access_token_key" : "1890967974-nHrVYU3lnHcGMaYnDjvr8jrQpnDiJZ9aVONs4MB",
+        "access_token_secret" : "E2ktf744h3DWFQtPaeeZQbQCILAmcalRdblspAZZd8Q"
+    },
+    "en" : {
+        "consumer_key" : "9O4HYykiJYRaVe2Gkrduw",
+        "consumer_secret" : "JF2Ngwhk8IhINvNL9lQwC6G3bIfvmrfgeW8rOakqq7U",
+        "access_token_key" : "1890992048-UOZYhDcsk7hffKhPs5Dyd15mpKBD3BBwpJ0cY23",
+        "access_token_secret" : "9aXlfLtLQTGCHhUnetskrqumD9XHNUkiP0yubE"
+    }
+})
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -197,13 +225,19 @@ class Application(tornado.web.Application):
         self.gcm = GCM(options.gcm_api_key)
         self.apns = APNSNotificationWrapper(options.apns_certificate, options.apns_sandbox_mode)
 
-        self.twitter_bot = twitter.Api(consumer_key=options.twitter_consumer_key,
-                                        consumer_secret=options.twitter_consumer_secret,
-                                        access_token_key=options.twitter_access_token_key,
-                                        access_token_secret=options.twitter_access_token_secret)
 
-        if self.twitter_bot.VerifyCredentials() is None:
-            raise Exception("Twitter bot credentials are wroooong ! ")
+        #twitter bots
+        self.twitter_bots = {}
+        for language in options.twitter_keys:
+            self.twitter_bots[language] = twitter.Api(
+                consumer_key=options.twitter_keys[language]['consumer_key'],
+                consumer_secret=options.twitter_keys[language]['consumer_secret'],
+                access_token_key=options.twitter_keys[language]['access_token_key'],
+                access_token_secret=options.twitter_keys[language]['access_token_secret']
+            )
+
+            if self.twitter_bots[language].VerifyCredentials() is None:
+                raise Exception("Twitter bot credentials are wroooong ! ")
 
         # Have one global connection to the TDT DB across all handlers
         self.db = torndb.Connection(
@@ -332,8 +366,13 @@ class Application(tornado.web.Application):
                 share_url = "http://beroads.com/event/%s"%event['id']
                 place_id = None
 
-                auth = OAuth1(options.twitter_consumer_key, options.twitter_consumer_secret,
-                    options.twitter_access_token_key, options.twitter_access_token_key)
+                auth = OAuth1(
+                    options.twitter_keys[language]['consumer_key'],
+                    options.twitter_keys[language]['consumer_secret'],
+                    options.twitter_keys[language]['access_token_key'],
+                    options.twitter_keys[language]['access_token_key']
+                )
+
                 payload = {'lat' : event['lat'], 'long' : event['lng']}
                 r = requests.get('https://api.twitter.com/1.1/geo/search.json', params=payload, auth=auth)
 
@@ -347,7 +386,7 @@ class Application(tornado.web.Application):
 
                 logger.info("Publishing status : %s on Twitter..."%status)
 
-                self.twitter_bot.PostUpdate(status=status,
+                self.twitter_bots[language].PostUpdate(status=status,
                     latitude=event['lat'],
                     longitude=event['lng'],
                     place_id=place_id,

@@ -18,14 +18,12 @@ import _mysql
 import datetime
 from BeautifulSoup import BeautifulSoup
 import htmlentitydefs
+import multiprocessing
+from multiprocessing import Queue
+import MySQLdb
+import time
 
-#TODO : flanders code
-#TODO : federal code, remove FILES - TRAVAUX items
-#TODO : install memcached on OSX
-#TODO : multiprocessing the requests by language/region
-#TODO : mysql inserts (insert time + hashing function)
 #TODO : dashboard - logging of push notifications
-#TODO : dashboard - add twitter accounts OAuth keys
 #TODO : dashboard - better analytics requests code
 #TODO : dashboard - add new APNS certificate
 #TODO : dashboard - polishing the interface
@@ -95,7 +93,7 @@ class Tools:
         for i in range(0,10):
             phi = math.pi/2 - 2 * math.atan(t * math.pow((1-self.e*math.sin(phi))/(1+self.e*math.sin(phi)), self.e/2))
 
-        return {"latitude" : phi, "longitude" : lam}
+        return {"latitude" : math.degrees(phi), "longitude" : math.degrees(lam)}
 
 
     def WGS84_to_lambert(self, phi, lam):
@@ -217,7 +215,7 @@ class Geocoder:
 
         key = str(address.split(" ")[0])
         #TODO : watch debug value
-        c = memcache.Client(['memcached'], debug=True)
+        c = memcache.Client(['127.0.0.1:11211'], debug=True)
         coordinates = c.get(key)
         if coordinates is not None:
             return coordinates
@@ -243,6 +241,10 @@ class Geocoder:
                     if self.over_query_retry < self.max_over_query_retry:
                         self.over_query_retry+=1
                         coordinates = self.geocode(address, "osm")
+                    else:
+                        return {"lng" : 0, "lat" : 0}
+                else:
+                    return {"lng" : 0, "lat" : 0}
 
 
             #openstreetmap geocoding tool (Nominatim)
@@ -258,6 +260,8 @@ class Geocoder:
                     if self.over_query_retry < self.max_over_query_retry:
                         self.over_query_retry+=1
                         coordinates = self.geocode(address, "gmap")
+                    else:
+                        return {"lng" : 0, "lat" : 0}
                 else:
                     self.over_query_retry=0
                     place = content[0]
@@ -285,7 +289,6 @@ class Geocoder:
             @return an array of decimal coordinates ("lat"=>0, "lng"=>0)
         """
 
-        #TODO : check regex and move this code onto traffic loader class
         if region=="federal" or region == "flanders":
             match = re.findall(r"(.*?) %s (-*(\w+)-*)+"%self.keywords[0][language], data)
 
@@ -299,7 +302,7 @@ class Geocoder:
                 else:
                     match = re.findall("(\w*) %s (\w*)"%self.keywords[1][language] , data)
                     if len(match)==1 and len(match[0])==2:
-                        data = match[1]
+                        data = match[0][1]
         else:
             raise Exception("Wrong source parameter, please retry.")
 
@@ -309,30 +312,30 @@ class TrafficLoader:
 
     urls = {
 
-        #'wallonia': {
-        #    'fr' : 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_FR.rss',
-        #    'nl' : 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_NL.rss',
-        #    'de': 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_DE.rss',
-        #    'en' : 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_EN.rss',
-        #},
+        'wallonia': {
+            'fr' : 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_FR.rss',
+            'nl' : 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_NL.rss',
+            'de': 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_DE.rss',
+            'en' : 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_EN.rss',
+        },
         'flanders' : {
-            'fr' : 'http://www.verkeerscentrum.be/verkeersinfo/tekstoverzicht_actueel?lastFunction=info&sortCriterionString=TYPE&sortAscending=true&autoUpdate=&cbxFILE=CHECKED&cbxINC=CHECKED&cbxRMT=CHECKED&cbxINF=CHECKED&cbxVlaanderen=CHECKED&cbxWallonie=CHECKED&cbxBrussel=CHECKED&searchString=&searchStringExactMatch=true',
-            'nl' : 'http://www.verkeerscentrum.be/verkeersinfo/tekstoverzicht_actueel?lastFunction=info&sortCriterionString=TYPE&sortAscending=true&autoUpdate=&cbxFILE=CHECKED&cbxINC=CHECKED&cbxRMT=CHECKED&cbxINF=CHECKED&cbxVlaanderen=CHECKED&cbxWallonie=CHECKED&cbxBrussel=CHECKED&searchString=&searchStringExactMatch=true',
-            'de' : 'http://www.verkeerscentrum.be/verkeersinfo/tekstoverzicht_actueel?lastFunction=info&sortCriterionString=TYPE&sortAscending=true&autoUpdate=&cbxFILE=CHECKED&cbxINC=CHECKED&cbxRMT=CHECKED&cbxINF=CHECKED&cbxVlaanderen=CHECKED&cbxWallonie=CHECKED&cbxBrussel=CHECKED&searchString=&searchStringExactMatch=true',
-            'en' : 'http://www.verkeerscentrum.be/verkeersinfo/tekstoverzicht_actueel?lastFunction=info&sortCriterionString=TYPE&sortAscending=true&autoUpdate=&cbxFILE=CHECKED&cbxINC=CHECKED&cbxRMT=CHECKED&cbxINF=CHECKED&cbxVlaanderen=CHECKED&cbxWallonie=CHECKED&cbxBrussel=CHECKED&searchString=&searchStringExactMatch=true'
-        }#,
-        #'brussels' : {
-        #    'fr': 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/fr/alerts.json',
-        #    'nl' : 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/nl/alerts.json',
-        #    'de' : 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/nl/alerts.json',
-        #    'en' : 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/nl/alerts.json'
-        #},
-#        'federal' : {
-#            'fr': 'http://www.inforoutes.be',
-#            'nl' : 'http://www.wegeninfo.be/',
-#            'de' : 'http://www.wegeninfo.be/',
-#            'en' : 'http://www.wegeninfo.be/'
-#        }
+            'fr' : 'http://www.verkeerscentrum.be/rss/1%7C100%7C101%7C102%7C103%7C2%7C4%7C5-INC%7CLOS%7CINF%7CPEVT.xml',
+            'nl' : 'http://www.verkeerscentrum.be/rss/1%7C100%7C101%7C102%7C103%7C2%7C4%7C5-INC%7CLOS%7CINF%7CPEVT.xml',
+            'de' : 'http://www.verkeerscentrum.be/rss/1%7C100%7C101%7C102%7C103%7C2%7C4%7C5-INC%7CLOS%7CINF%7CPEVT.xml',
+            'en' : 'http://www.verkeerscentrum.be/rss/1%7C100%7C101%7C102%7C103%7C2%7C4%7C5-INC%7CLOS%7CINF%7CPEVT.xml'
+        },
+        'brussels' : {
+            'fr': 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/fr/alerts.json',
+            'nl' : 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/nl/alerts.json',
+            'de' : 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/nl/alerts.json',
+            'en' : 'http://www.bruxellesmobilite.irisnet.be/static/mobiris_files/nl/alerts.json'
+        },
+        'federal' : {
+            'fr': 'http://www.inforoutes.be',
+            'nl' : 'http://www.wegeninfo.be/',
+            'de' : 'http://www.wegeninfo.be/',
+            'en' : 'http://www.wegeninfo.be/'
+        }
 
     }
 
@@ -360,52 +363,124 @@ class TrafficLoader:
 
         print "Launched ! "
 
-    def load_traffic(self):
+
+    def run(self):
+
+        traffic_raw_data_queue = multiprocessing.Queue()
+        traffic_events_queue = multiprocessing.Queue()
+
+        sql_storing = multiprocessing.Process(name='data_storing',
+            target=self.store_traffic,
+            args=(traffic_events_queue,)
+        )
+        sql_storing.start()
+
+        traffic_loader = multiprocessing.Process(name='traffic_loader',
+            target=self.load_traffic,
+            args=(traffic_raw_data_queue,)
+        )
+        traffic_loader.start()
+
+        parsing_processes = []
+        try:
+            again = True
+            while again:
+                if not traffic_raw_data_queue.empty():
+                    raw_data = traffic_raw_data_queue.get(True, 0.5)
+                    if raw_data is None:
+                        again = False
+                    else:
+                        print "Got data from %s - %s"%(raw_data['region'], raw_data['language'])
+                        parsing_processes.append(
+                            multiprocessing.Process(name='%s - %s'%(raw_data['region'], raw_data['language']),
+                            target=self.parse_traffic,
+                            args=(raw_data, traffic_events_queue,)
+                        ))
+                        parsing_processes[len(parsing_processes)-1].start()
+            time.sleep(60)
+            for p in parsing_processes:
+                p.terminate()
+            traffic_loader.terminate()
+            sql_storing.terminate()
+            self.run()
+        except Exception as e:
+            self.logger.exception(e)
+
+
+
+
+    def load_traffic(self, out_queue):
 
         try:
-            data = {}
             for region in self.urls:
-                data[region] = {}
                 for language in self.urls[region]:
-                    print "Loading traffic from %s in %s on %s"%(region, language, self.urls[region][language])
                     r = requests.get(self.urls[region][language])
                     if r.status_code != 200:
-                        raise Exception("Content unavailable on %s"%url)
-                    data[region][language] = r.content
-
-                    results = self.parse_traffic(data[region][language], region, language)
-
-                    #store results in MySQL
-
-                    """try:
-                        con = _mysql.connect('localhost', 'root', 'rootsqlmy8na6xe*', 'beroads')
-                        for result in results:
-                            con.query("SELECT * FROM trafic WHERE hash = '%s'"%result['hash'])
-                            row = con.use_result()
-                            if row is None:
-                                con.query("INSERT INTO trafic \
-                                            (location, message, category, source, hash, lat, lng, time, insert_time) \
-                                            VALUES \
-                                             '%s', '%s', '%s', '%s', '%s', %f, %f, %d, %d"%
-                                            (result['location'], result['message'], result['category'], result['source'],
-                                            result['hash'], result['lat'], result['lng'], result['time'], time.time())
-                                )
-
-                    except _mysql.Error, e:
-                        self.logger.exception(e)
-                    finally:
-                        if con:
-                            con.close()"""
-
-            return data
+                        raise Exception("Content unavailable on %s"%self.urls[region][language])
+                    out_queue.put({'region' : region, 'language' : language, 'content' : r.content})
+                    print "Loaded traffic from %s in %s on %s"%(region, language, self.urls[region][language])
 
         except Exception as e:
             logging.exception(e)
+            out_queue.put({'region' : region, 'language' : language, 'content' : None})
+        finally:
+            out_queue.put(None)
 
-    def parse_traffic(self, traffic, region, language):
 
-        result = []
+    def store_traffic(self, in_queue):
+
+        con = None
+        try:
+            con = MySQLdb.connect('localhost', 'root', 'rootsql,my8na6xe*', 'beroads', charset='utf8')
+
+            counter = 0
+            while counter < 16:
+                if not in_queue.empty():
+                    item = in_queue.get(True, 0.5)
+                    if item is None:
+                        counter+=1
+                    else:
+                        print "Got item %s"%item
+                        #we do this kind of hashing because we don't have a real time value for brussels events so everytime
+                        #we load them we could have different hashes for the same event if we hash the time
+                        item['hash'] = hashlib.md5("%s+%s+%s+%s+%s+%s"%
+                                                   (item['location'], item['message'], item['category'],
+                                                    item['source'], item['lat'], item['lng'])).hexdigest()
+                        cursor = con.cursor()
+                        cursor.execute("SELECT * FROM trafic WHERE hash = '%s'"%item['hash'])
+                        row = cursor.fetchone()
+                        if row is None:
+                            query = "INSERT INTO trafic \
+                                                    (location, message, category, source, hash, lat, lng, time, insert_time) \
+                                                    VALUES \
+                                                     (\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", %f, %f, %d, %d)"%(
+                                con.escape_string(item['location']),
+                                con.escape_string(item['message']),
+                                con.escape_string(item['category']),
+                                con.escape_string(item['source']),
+                                con.escape_string(item['hash']),
+                                float(item['lat']),
+                                float(item['lng']),
+                                time.mktime(item['time'].timetuple()),
+                                int(time.time())
+                            )
+                            cursor.execute(query)
+                            con.commit()
+                        cursor.close()
+
+        except _mysql.Error, e:
+            self.logger.exception(e)
+        finally:
+            if con:
+                con.close()
+
+    def parse_traffic(self, raw_data, out_queue):
+
         geocoder = Geocoder()
+        region = raw_data['region']
+        language = raw_data['language']
+        traffic = raw_data['content']
+
         if region == "wallonia":
             categories = {"CHANIV1":"others","CHANIV2":"works","CHANIV3":"works","INCNIV1":"events","INCNIV2":"events",
                 "INCNIV3":"events"}
@@ -432,54 +507,45 @@ class TrafficLoader:
                             node['lat'] = x['lat']
                             node['lng'] = x['lon']
                             node['category'] = categories[x['nomIcone']]
-                    result.append(node)
-                return result
+                    out_queue.put(node)
+                out_queue.put(None)
             except Exception as e:
                 self.logger.exception(e)
 
         elif region == "flanders":
-            result = []
+            categories = {
+                "ongevallen" : "accident",
+                "files" : "traffic jam",
+                "wegeninfo" : "info",
+                "werkzaamheden" : "works"
+            }
             try:
                 soup = BeautifulSoup(traffic)
 
-                categories = soup.findAll(name='img', attrs={'border':'0', 'height':'31', 'width':'31'})
-                locations = soup.findAll(name='td', attrs={'width' : '109', 'bgcolor' : '#FFFFFF', 'align' : 'center',  'valign' : 'middle'})
-                messages = soup.findAll(name='td', attrs={'width' : '260',  'bgcolor' : '#FFFFFF'})
-                times = soup.findAll(name='td', attrs={'width':'93', 'bgcolor':'#FFFFFF', 'align':'center'})
+                items = soup.findAll('item')
+                for item in items:
 
-                for category, location, message, time in zip(categories, locations, messages, times):
-
-                    category = str(category)
-                    location = unescape(re.sub('<[^>]*>', '', str(location))).strip()
-                    if "ongeval_driehoek" in category:
-                        category = "accident"
-                    elif "file_driehoek" in category :
-                        category = "traffic jam"
-                    elif "i_bol" in category:
-                        category = "info"
-                    elif "werkman" in category:
-                        category = "works"
-
+                    category = categories[item.category.string]
+                    location = unescape(item.title.string)
                     coordinates = geocoder.geocodeData(location, region, language)
-                    item = {
+
+                    node = {
                         'category' : category,
                         'location' : location,
-                        'message' : unescape(re.sub('<[^>]*>', '', str(message).replace('meer informatie', ''))).strip(),
-                        'time' : self.parse_time(region, str(time).strip()),
+                        'message' :  unescape(item.description.string),
+                        'time' : self.parse_time(region, item.pubdate.string),
                         'source' : "Verkeerscentrum",
                         'lat' : coordinates['lat'],
                         'lng' : coordinates['lng']
                     }
-                    result.append(item)
-                return result
+                    out_queue.put(node)
+                out_queue.put(None)
             except Exception as e:
                 self.logger.exception(e)
-                result = []
-                return result
+
 
         elif region == "brussels":
             import time
-            result = []
             try:
                 json_tab = json.loads(traffic)
                 t = Tools()
@@ -493,28 +559,20 @@ class TrafficLoader:
                     item = {
                         'category' : element['properties']['category'].lower(),
                         'source' : 'Mobiris',
-                        'time' : int(time.time()),
+                        'time' : datetime.datetime.now(),
                         'message' : element['properties']['cause'],
                         'location' : unescape(element['properties']['street_name']),
                         'lat' : coordinates['latitude'],
                         'lng' : coordinates['longitude']
                     }
-                    result.append(item)
-
-                return result
+                    out_queue.put(item)
+                out_queue.put(None)
 
             except Exception as e:
                 self.logger.exception(e)
-                result = []
-                return result
 
         elif region == "federal":
             try:
-                result = []
-
-
-                #TODO html parsing in python
-
                 soup = BeautifulSoup(traffic)
                 locations = soup.findAll(name='td', attrs={'class':'textehome', 'valign':'middle', 'width':'475'})
 
@@ -524,42 +582,36 @@ class TrafficLoader:
                 dates.pop(0)
 
                 for message, location, date in zip(messages, locations, dates):
-                    message = re.sub('<[^>]*>', '', str(message))
-                    date = re.sub('<[^>]*>', '', str(date))
-                    location = str(unescape(re.sub('<[^>]*>', '', str(location))))
-                    source = message.split(':')[1].replace(" meldt", "").replace(" signale", "")
-                    message = str(unescape(message.split(':')[2].strip()))
 
-                    coordinates = geocoder.geocodeData(location, region, language)
-                    item = {
-                        'message' : message,
-                        'location' : location,
-                        'source' : source,
-                        'time' : self.parse_time(region, date),
-                        'lat' : coordinates['lat'],
-                        'lng' : coordinates['lng']
-                    }
+                    message = unescape(re.sub("\s+" , " ", re.sub(r'[\t\n\r]', ' ', re.sub('<[^>]*>', '', str(message)))))
+                    location = unescape(re.sub('<[^>]*>', '', str(location)))
+                    if "FILES - TRAVAUX" not in location and "FILES - WERKEN" not in location:
+                        coordinates = geocoder.geocodeData(location, region, language)
+                        item = {
+                            'message' : message.split(':')[2],
+                            'location' : location,
+                            'source' : message.split(':')[1].replace(" meldt", "").replace(" signale", ""),
+                            'time' : self.parse_time(region, re.sub('<[^>]*>', '', str(date))),
+                            'lat' : coordinates['lat'],
+                            'lng' : coordinates['lng']
+                        }
 
-                    #TODO : dutch ?
-                    if "travaux" in message or "chantier" in message:
-                        item['category'] = "works"
-                    elif "accident" in message or "incident" in message:
-                        item['category'] = "events"
-                    else:
-                        item['category'] = "other"
-
-
-
-                    result.append(item)
-                return result
+                        #TODO : dutch ?
+                        if "travaux" in message or "chantier" in message:
+                            item['category'] = "works"
+                        elif "accident" in message or "incident" in message:
+                            item['category'] = "events"
+                        else:
+                            item['category'] = "other"
+                        out_queue.put(item)
+                out_queue.put(None)
 
             except Exception as e:
                 self.logger.exception(e)
-                result = []
-                return result
 
         else:
             raise Exception("Wrong region parameter !")
+
 
 
     def parse_time(self, region, content):
@@ -605,7 +657,7 @@ if __name__ == "__main__":
     #by enabling this we don't stop the process on error and keep running ;-)
         try:
             traffic_loader = TrafficLoader()
-            traffic_loader.load_traffic()
+            traffic_loader.run()
         except Exception as e:
             logging.exception(e)
             continue
