@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import sys
 import tornado.escape
 import tornado.ioloop
 from tornado.options import options, define
@@ -8,6 +9,7 @@ import tornado.websocket
 import tornado.gen
 from tornado.iostream import StreamClosedError
 
+from optparse import OptionParser
 import logging
 import os
 import requests
@@ -24,7 +26,7 @@ from math import radians, cos, sin, asin, sqrt, atan2
 import uuid
 
 from gcm import *
-from APNSWrapper import *
+from apns import APNs, Payload, MAX_PAYLOAD_LENGTH
 import twitter
 
 def require_basic_auth(handler_class):
@@ -143,8 +145,6 @@ def nearest_point_segment(a, b, c):
 logging.basicConfig(filename='beroads.log', level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-define("ip", default="0.0.0.0", help="listen to the given ip")
-define("port", default=8080, help="run on the given port", type=int)
 define("mysql_host", default="localhost", help="database host")
 define("mysql_database", default="beroads", help="database name")
 define("mysql_user", default="root", help="database user")
@@ -198,7 +198,6 @@ class Application(tornado.web.Application):
             cookie_secret="5725af95ef74805b753cd3689bb3393681e02ce6",
             static_path="static",
             xsrf_cookies=False,
-            server_ip=options.ip
         )
 
         handlers = [
@@ -222,8 +221,9 @@ class Application(tornado.web.Application):
 
         tornado.web.Application.__init__(self, handlers, **settings)
 
+        self.last_insert_time = int(time.time())
         self.gcm = GCM(options.gcm_api_key)
-        self.apns = APNSNotificationWrapper(options.apns_certificate, options.apns_sandbox_mode)
+        self.apns = APNs(use_sandbox=options.apns_sandbox_mode, cert_file=options.apns_certificate)
 
 
         #twitter bots
@@ -244,33 +244,25 @@ class Application(tornado.web.Application):
             host="localhost", database=options.mysql_database,
             user=options.mysql_user, password=options.mysql_password)
 
+    @tornado.web.asynchronous
+    def log_notification(self, notif):
+        """
+            Logs a notification into our mysql database
+        """
+        self.db.execute("INSERT INTO notification_logs (uuid, type, size, time) VALUES "
+                        "(\"%s\", \"%s\", %d, %d)"%
+                        (notif['uuid'], notif['type'], notif['size'], notif['time']))
+        return
 
     @tornado.gen.engine
     def traffic_differ(self, language, callback):
         #traffic differ with mysql stored events (md5 hash)
         try:
-            old = open('%s.json' % language, "rb").read()
-            new = requests.get("http://data.beroads.com/IWay/TrafficEvent/%s/all.json" % language).content
-            with open('%s.json' % language, "wb") as f:
-                f.write(new)
-            old = json.loads(old)
-            new = json.loads(new)
-
-            t = '{"TrafficEvent":{"item":['
-            for i in range(0, len(new['TrafficEvent']['item'])):
-                present = False
-                for j in range(0, len(old['TrafficEvent']['item'])):
-                    if int(new['TrafficEvent']['item'][i]['id']) == int(old['TrafficEvent']['item'][j]['id']):
-                        present = True
-                if not present:
-                    t += json.dumps(new['TrafficEvent']['item'][i]) + ","
-
-            if t[-1] == ",":
-                t = t[:-1] + ']}}'
-            else:
-                t += ']}}'
-            callback(json.loads(t))
-        except ValueError as e:
+            rows = self.db.execute("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d"%
+                                   (language, self.last_insert_time))
+            self.last_insert_time = int(time.time())
+            callback(rows)
+        except Exception as e:
             logging.error(e)
             callback(None)
 
@@ -283,7 +275,7 @@ class Application(tornado.web.Application):
         logger.info("Notifying subscribers from channel %s" % language)
 
         for subscriber in TrafficSocketHandler.channels[language]:
-            for event in events['TrafficEvent']['item']:
+            for event in events:
                 distance = int(haversine(subscriber.coords,
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
                 if distance < int(subscriber.area):
@@ -295,12 +287,15 @@ class Application(tornado.web.Application):
                         "data": event
                     }
                     logger.info("Sending update to subscriber %s" % subscriber.uuid)
+                    notif = {"uuid" : suscriber.uuid, "type" : "web", "size" : len(str(event)), "time" : int(time.time())}
                     subscriber.write_message(tornado.escape.json_encode(message))
+                    self.log_notification(notif)
 
 
         # Google Cloud Service
         for subscriber in GoogleCloudMessagingHandler.gcm_connections[language]:
-            for event in events['TrafficEvent']['item']:
+            for event in events:
+                distance = sys.maxint
                 if 'points' in subscriber:
                     current_point = subscriber['points'][0]
                     for i in range(1, len(subscriber['points'])):
@@ -320,7 +315,7 @@ class Application(tornado.web.Application):
                     event['distance'] = distance
                     response = self.gcm.json_request(
                             registration_ids=[subscriber['registration_id']], data=event,
-                            collapse_key='uptoyou', delay_while_idle=True, time_to_live=3600
+                            collapse_key='beroads', delay_while_idle=True, time_to_live=3600
                         )
                     logger.info("Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
                     # Handling errors
@@ -336,31 +331,46 @@ class Application(tornado.web.Application):
                         for reg_id, canonical_id in response['canonical'].items():
                             # Repace reg_id with canonical_id in your database
                             subscriber['registration_id'] = canonical_id
+                    notif = {
+                        "uuid" : suscriber['registration_id'],
+                        "type" : "gcm",
+                        "size" : len(str(event)),
+                        "time" : int(time.time())
+                    }
+                    self.log_notification(notif)
 
 
         # Apple APNS
 
         for subscriber in ApplePushNotificationServerHandler.apns_connections[language]:
-            for event in events['TrafficEvent']['item']:
+            for event in events:
                 distance = int(haversine(subscriber['coords'],
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
                 if distance < int(subscriber['area']):
                     event['distance'] = distance
                     #PUBLISH
-                    message = APNSNotification()
-                    alert = APNSAlert()
-                    message.tokenHex(subscriber['device_token'])
-                    #the entire payload is limited to 256bytes so we put an arbitrary limit on 220 chars for the text
-                    alert.body(event['location'].encode('utf-8'))
-                    message.alert(alert)
-                    message.badge(5)
-                    message.sound()
-                    self.apns.append(message)
+                    try:
+                        payload = Payload(alert=event['location'][0:200], sound="default", badge=5)
+                    except apns.PayloadTooLargeError as e:
+                        #if the payload is too large, we chomp the alert content
+                        logger.exception(e)
+                        json_overhead_bytes = len(payload.json())-1
+                        payload = Payload(alert=event['location'][:(MAX_PAYLOAD_LENGTH - json_overhead_bytes)],
+                        sound="default", badge=5)
+
+                    self.apns.gateway_server.send_notification(subscriber['device_token'], payload)
+
                     logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
-            self.apns.notify()
+                    notif = {
+                        "uuid" : suscriber['device_token'],
+                        "type" : "apns",
+                        "size" : len(str(payload)),
+                        "time" : int(time.time())
+                    }
+                    self.log_notification(notif)
 
         # Twitter
-        for event in events['TrafficEvent']['item']:
+        for event in events:
 
             if int(event['time']) > time.time()-(60*60*2):
                 share_url = "http://beroads.com/event/%s"%event['id']
@@ -709,13 +719,12 @@ class ApplePushNotificationServerHandler(BaseHandler):
     @classmethod
     def feedback(cls):
         logger = logging.getLogger("APNS feedback")
-        feedback = APNSFeedbackWrapper(options.apns_certificate, True)
-        feedback.receive()
-        for x, y in feedback:
-            logger.info("Device token %s unavailable since %s"%(str(y), x.strftime("%m %d %Y %H:%M:%S")))
+        for (token_hex, fail_time) in self.apns.feedback_server.items():
+
+            logger.info("Device token %s unavailable since %s"%(token_hex, fail_time.strftime("%m %d %Y %H:%M:%S")))
             for channel in cls.apns_connections:
                 for subscriber in channel:
-                    if subscriber['device_token'] == y:
+                    if subscriber['device_token'] == token_hex:
                         channel.remove(subscriber)
 
     def post(self, *args, **kwargs):
@@ -1390,22 +1399,32 @@ class AnalyticsMobileHandler(BaseHandler):
 
 if __name__ == "__main__":
 
-    app = Application()
-    app.listen(options.port)
-    logging.info("Starting BeRoads webserver on address %s:%s" % (options.ip, options.port))
-    main_loop = tornado.ioloop.IOLoop.instance()
+    try:
+        parser = OptionParser()
+        parser.add_option("-p", "--port", type="int", default=8080, help="listening port")
+        parser.add_option("-t", "--time", type="int", default=900, help="sleep time between trafic refresh")
+        (values, args) = parser.parse_args()
 
-    #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
-    #websockets subscribers.
-    tornado.ioloop.PeriodicCallback(app.load_traffic, options.traffic_fetch_frequency, io_loop=main_loop).start()
+        app = Application()
 
-    #start a periodic callback to tail our log file and send new line to websocket client
-    tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
-    tailed_callback.start()
+        app.listen(values.port)
+        logging.info("BeRoads webserver listening on %s" % (values.port))
+        main_loop = tornado.ioloop.IOLoop.instance()
 
-    feedback_callback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.feedback, 3600000)
-    feedback_callback.start()
+        #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
+        #websockets subscribers.
+        tornado.ioloop.PeriodicCallback(app.load_traffic, values.time, io_loop=main_loop).start()
 
-    main_loop.start()
+        #start a periodic callback to tail our log file and send new line to websocket client
+        tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
+        tailed_callback.start()
+
+        feedback_callback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.feedback, 3600000)
+        feedback_callback.start()
+
+        main_loop.start()
+    except KeyboardInterrupt as e:
+        logging.exception(e)
+        sys.exit(0)
 
 
