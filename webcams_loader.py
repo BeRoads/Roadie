@@ -7,6 +7,7 @@ class WebcamsLoader:
         Utility script that fetch webcam images from belgian providers (Verkeers centrum, Centre Perex, Mobiris).
     """
 
+    webcams_subdirs = ['wallonia', 'flanders', 'brussels']
 
     def __init__(self, webcams_directory, sleep_time, log_filename='/var/log/beroads/webcams_loader'):
         """
@@ -16,6 +17,13 @@ class WebcamsLoader:
         """
 
         self.webcams_directory = webcams_directory
+        if os.path.isdir(self.webcams_directory):
+            for subdir in self.webcams_subdirs:
+                if not os.path.exists("%s%s/"%(self.webcams_directory, subdir)):
+                    os.mkdir("%s%s/"%(self.webcams_directory, subdir))
+        else:
+            raise Exception("Webcams directory don't exist")
+        #verify if directories exists or not
         self.sleep_time = sleep_time
 
         #set a custom formatter
