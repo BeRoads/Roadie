@@ -867,8 +867,10 @@ class DashboardHandler(BaseHandler):
 
             traffic_feed_channels = TrafficSocketHandler.channels
             events_count = []
-            for feed in traffic_feed_channels:
-                events_count.append(len(json.loads(open("%s.json" % feed).read())['TrafficEvent']['item']))
+            for language in traffic_feed_channels:
+                events_count.append(len(
+                    self.db.query("SELECT * FROM trafic WHERE language = %s AND time >= CURRENT_DATE AND "
+                                  "time < CURRENT_DATE + INTERVAL 1 DAY"%(language))))
 
             google_subscribers = GoogleCloudMessagingHandler.gcm_connections
             apple_subscribers = ApplePushNotificationServerHandler.apns_connections
