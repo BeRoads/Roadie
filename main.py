@@ -196,6 +196,14 @@ class Application(tornado.web.Application):
         self.db = torndb.Connection(
             host="localhost", database=options.mysql_database,
             user=options.mysql_user, password=options.mysql_password)
+        self.cache = memcache.Client(['127.0.0.1:11221'], debug=True)
+
+        for contype in ['apns', 'gcm', 'web']:
+            for language in ['fr','nl', 'de', 'en']:
+                subscribers = self.cache.get('subscribers.%s.%s'%(contype, language))
+                if subscribers is None:
+                    self.cache.set('subscribers.%s.%s'%(contype, language), [])
+
 
     def log_notification(self, notif):
         """
@@ -225,7 +233,7 @@ class Application(tornado.web.Application):
         logger = logging.getLogger("notification pusher")
         logger.info("Notifying subscribers from channel %s" % language)
 
-        for subscriber in TrafficSocketHandler.channels[language]:
+        for subscriber in self.cache.get('subscribers.web.%s'%language):
             for event in events:
                 distance = int(haversine(subscriber.coords,
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
@@ -244,7 +252,8 @@ class Application(tornado.web.Application):
 
 
         # Google Cloud Service
-        for subscriber in GoogleCloudMessagingHandler.gcm_connections[language]:
+        subscribers = self.cache.get('subscriber.gcm.%s'%language)
+        for subscriber in subscribers:
             for event in events:
                 distance = sys.maxint
                 if 'points' in subscriber:
@@ -276,7 +285,8 @@ class Application(tornado.web.Application):
                                 # Remove reg_ids from database
                                 logger.error("Device %s not registered, removing from channel %s"%
                                              (subscriber["registration_id"], language))
-                                GoogleCloudMessagingHandler.gcm_connections[language].delete(subscriber)
+                                subscribers.delete(subscriber)
+                                self.cache.set('subscribers.gcm.%s'%language, subscribers)
                     if 'canonical' in response:
                         for reg_id, canonical_id in response['canonical'].items():
                             # Repace reg_id with canonical_id in your database
@@ -291,8 +301,8 @@ class Application(tornado.web.Application):
 
 
         # Apple APNS
-
-        for subscriber in ApplePushNotificationServerHandler.apns_connections[language]:
+        subscribers = self.cache.get('subscribers.apns.%s'%language)
+        for subscriber in subscribers:
             for event in events:
                 distance = int(haversine(subscriber['coords'],
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
@@ -306,6 +316,8 @@ class Application(tornado.web.Application):
                     for token, reason in res.failed.items():
                         code, errmsg = reason
                         logger.error("Device faled: {0}, reason: {1}".format(token, errmsg))
+                        subscribers.remove(subscriber)
+                        self.cache.set('subscribers.apns.%s'%language, subscribers)
 
                     # Check failures not related to devices.
                     for code, errmsg in res.errors:
@@ -337,10 +349,12 @@ class Application(tornado.web.Application):
         for (token_hex, fail_time) in self.apns.feedback_server.items():
 
             logger.info("Device token %s unavailable since %s"%(token_hex, fail_time.strftime("%m %d %Y %H:%M:%S")))
-            for channel in ApplePushNotificationServerHandler.apns_connections:
-                for subscriber in channel:
+            for language in ['fr', 'nl', 'de', 'en']:
+                subscribers = self.cache.get('subscribers.apns.%s'%language)
+                for subscriber in subscribers:
                     if subscriber['device_token'] == token_hex:
-                        channel.remove(subscriber)
+                        subscribers.remove(subscriber)
+                        self.cache.set('subscribers.apns.%s'%language, subscribers)
 
     @tornado.gen.engine
     def load_traffic(self):
@@ -366,7 +380,6 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
 
     """
     logger = logging.getLogger("websocket handler")
-    channels = {'fr': [], 'nl': [], 'de': [], 'en': []}
 
     def allow_draft76(self):
         # for iOS 5.0 Safari
@@ -382,14 +395,17 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(tornado.escape.json_encode(ack))
 
     def on_close(self):
-        self.channels[self.language].remove(self)
+        subscribers = self.cache.get('subscribers.web.%s'%self.language)
+        subscribers.remove(self)
+        self.cache.set('subscribers.web.%s'%self.language, subscribers)
 
     @classmethod
     def publish(cls, channel, message):
         """
             Publish message to all subscribers on channel.
         """
-        for subscriber in cls.channels[channel]:
+        subscribers = cls.cache.get('subscribers.web.%s'%channel)
+        for subscriber in subscribers:
             subscriber.write_message(tornado.escape.json_encode(message))
 
     @classmethod
@@ -455,7 +471,10 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                 self.coords = parsed['coords']
                 self.area = parsed["area"]
 
-                self.channels[self.language].append(self)
+                subscribers = self.cache.get('subscribers.web.%s'%language)
+                subscribers.append(self)
+                self.cache.set('subscribers.web.%s'%language, subscribers)
+
                 ack = {
                     "uuid": self.uuid,
                     "code": 2,
@@ -577,6 +596,13 @@ class BaseHandler(tornado.web.RequestHandler):
         """
         return self.application.apns
 
+    @property
+    def cache(self):
+        """
+
+        """
+        return self.application.cache
+
     def auth(self, username, password):
         """
 
@@ -590,8 +616,6 @@ class BaseHandler(tornado.web.RequestHandler):
 class GoogleCloudMessagingHandler(BaseHandler):
 
     logger = logging.getLogger("GCM handler")
-    gcm_connections = {'fr': [], 'nl': [], 'de': [], 'en': []}
-
 
     def post(self, *args, **kwargs):
         """
@@ -628,14 +652,16 @@ class GoogleCloudMessagingHandler(BaseHandler):
                     raise ValueError("longitude is not valid")
 
             present = False
-            for subscriber in self.gcm_connections[data['language']]:
+            subscribers = self.cache.get('subscribers.gcm.%s'%data['language'])
+            for subscriber in subscribers:
                 if subscriber['registration_id'] == data['registration_id']:
                     subscriber = data
                     present = True
 
             if not present:
                 data['timestamp'] = time.time()
-                self.gcm_connections[data['language']].append(data)
+                subscribers.append(data)
+                self.cache.set('subscribers.gcm.%s'%data['language'], subscribers)
 
             self.set_status(200)
 
@@ -674,8 +700,9 @@ class WebsocketSendNotificationHandler(BaseHandler):
 
         """
         if self.get_argument("uuid") is not None and self.get_argument("message") is not None:
-            for language in TrafficSocketHandler.channels:
-                for subscriber in TrafficSocketHandler.channels[language]:
+            for language in ['fr', 'nl', 'de', 'en']:
+                subscriber = self.cache.get('subscribers.web.%s'%language)
+                for subscriber in subscribers:
                     if subscriber.uuid == self.get_argument("uuid"):
                         message = {
                             "uuid": subscriber.uuid,
@@ -690,7 +717,6 @@ class WebsocketSendNotificationHandler(BaseHandler):
 class ApplePushNotificationServerHandler(BaseHandler):
 
     logger = logging.getLogger("APNS handler")
-    apns_connections = {'fr': [], 'nl': [], 'de': [], 'en': []}
     SUPPORTED_METHODS = ("POST")
 
     @classmethod
@@ -698,13 +724,17 @@ class ApplePushNotificationServerHandler(BaseHandler):
         """
             Requests APNS feedback server to remove disconnected device from list.
         """
-        logger = logging.getLogger("APNS feedback")
-        for (token_hex, fail_time) in self.application.apns.feedback_server.items():
-            logger.info("Device token %s unavailable since %s"%(token_hex, fail_time.strftime("%m %d %Y %H:%M:%S")))
-            for channel in cls.apns_connections:
-                for subscriber in channel:
-                    if subscriber['device_token'] == token_hex:
-                        channel.remove(subscriber)
+        con = Session.new_connection("feedback_production", cert_string=db_certificate)
+        service = APNs(con, tail_timeout=10)
+        for token, when in service.feedback():
+            cls.logger.info("Removing token %s"%token)
+            for language in ['fr', 'nl', 'de', 'en']:
+                subscribers = cls.cache.get('subscribers.apns.%s'%language)
+                for subscriber in subscribers:
+                    if subscriber['device_token'] == token:
+                        subscribers.remove(subscriber)
+
+        cls.cache.set('subscribers.apns.%s'%language, subscribers)
 
     def post(self, *args, **kwargs):
         """
@@ -745,15 +775,17 @@ class ApplePushNotificationServerHandler(BaseHandler):
                     data['coords']['longitude'] = float(data['coords']['longitude'])
 
             present = False
-            for subscriber in self.apns_connections[data['language']]:
+            subscribers = self.cache.get('subscribers.apns.%s'%data['language'])
+            for subscriber in subscribers:
                 if subscriber['device_token'] == data['device_token']:
                     subscriber = data
                     present = True
 
             if not present:
                 data['timestamp'] = time.time()
-                self.apns_connections[data['language']].append(data)
+                subscribers.append(data)
 
+            self.cache.set('subscribers.apns.%s'%data['language'], subscribers)
             self.set_status(200)
 
         except Exception as e:
@@ -854,9 +886,24 @@ class DashboardHandler(BaseHandler):
                 events_count.append(len(self.db.query("SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE"%(language))))
 
 
-            google_subscribers = GoogleCloudMessagingHandler.gcm_connections
-            apple_subscribers = ApplePushNotificationServerHandler.apns_connections
-            web_subscribers = TrafficSocketHandler.channels
+            google_subscribers = dict(
+                fr=self.cache.get('subscribers.gcm.fr'),
+                nl=self.cache.get('subscribers.gcm.nl'),
+                de==self.cache.get('subscribers.gcm.de'),
+                en=self.cache.get('subscribers.gcm.en')
+            )
+            apple_subscribers = dict(
+                fr=self.cache.get('subscribers.apns.fr'),
+                nl=self.cache.get('subscribers.apns.nl'),
+                de==self.cache.get('subscribers.apns.de'),
+                en=self.cache.get('subscribers.apns.en')
+            )
+            web_subscribers = dict(
+                fr=self.cache.get('subscribers.web.fr'),
+                nl=self.cache.get('subscribers.web.nl'),
+                de==self.cache.get('subscribers.web.de'),
+                en=self.cache.get('subscribers.web.en')
+            )
 
             self.render("templates/index.html", username=basicauth_user, sources=sources,
                 traffic_feed_channels=traffic_feed_channels, google_subscribers=google_subscribers,
@@ -881,15 +928,26 @@ class AnalyticsSubscribersHandler(BaseHandler):
         if self.auth(basicauth_user, basicauth_pass):
             if subscriber_type in self.subscribers_types:
                 if subscriber_type == "web":
-                    data = {}
-                    for channel in TrafficSocketHandler.channels:
-                        data[channel] = []
-                        for subscriber in TrafficSocketHandler.channels[channel]:
-                            data[channel].append({"uuid" : subscriber.uuid, "coords" : subscriber.coords})
+                    data = dict(
+                        fr=self.cache.get('subscribers.web.fr'),
+                        nl=self.cache.get('subscribers.web.nl'),
+                        de==self.cache.get('subscribers.web.de'),
+                        en=self.cache.get('subscribers.web.en')
+                    )
                 elif subscriber_type == "google":
-                    data = GoogleCloudMessagingHandler.gcm_connections
+                    data = dict(
+                        fr=self.cache.get('subscribers.gcm.fr'),
+                        nl=self.cache.get('subscribers.gcm.nl'),
+                        de==self.cache.get('subscribers.gcm.de'),
+                        en=self.cache.get('subscribers.gcm.en')
+                    )
                 elif subscriber_type == "apple":
-                    data = ApplePushNotificationServerHandler.apns_connections
+                    data = dict(
+                        fr=self.cache.get('subscribers.apns.fr'),
+                        nl=self.cache.get('subscribers.apns.nl'),
+                        de==self.cache.get('subscribers.apns.de'),
+                        en=self.cache.get('subscribers.apns.en')
+                    )
 
                 self.set_header("Content-Type", "text/json; charset=UTF-8")
                 self.write(tornado.escape.json_encode(data))
