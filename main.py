@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import apns
 import tornado.escape
 import tornado.ioloop
 from tornado.options import options, define
@@ -13,9 +14,6 @@ from optparse import OptionParser
 import logging
 import os
 import requests
-from requests_oauthlib import OAuth1
-import json
-import re
 import torndb
 import time
 import base64
@@ -26,8 +24,7 @@ from math import radians, cos, sin, asin, sqrt, atan2
 import uuid
 
 from gcm import *
-from apns import APNs, Payload, MAX_PAYLOAD_LENGTH
-import twitter
+from apns import APNs, Payload, MAX_PAYLOAD_LENGTH, PayloadTooLargeError
 
 def require_basic_auth(handler_class):
     # Should return the new _execute function, one which enforces
@@ -99,7 +96,7 @@ def to_cartesian(latitude, longitude):
     """
 
     """
-    x = R * cos(lattitude) * cos(longitude)
+    x = R * cos(latitude) * cos(longitude)
     y = R * cos(latitude) * sin(longitude)
     z = R * sin(latitude)
     return {'x' : x, 'y' :  y, 'z' : z}
@@ -139,7 +136,7 @@ def nearest_point_segment(a, b, c):
     t = nearest_point_great_circle(a,b,c)
     if on_segment(a,b,t):
         return t
-    return (a if haversine(a,c) < haversine(b,c) else c)
+    return a if haversine(a,c) < haversine(b,c) else c
 
 
 logging.basicConfig(filename='beroads.log', level=logging.INFO,
@@ -149,49 +146,16 @@ define("mysql_host", default="localhost", help="database host")
 define("mysql_database", default="beroads", help="database name")
 define("mysql_user", default="root", help="database user")
 define("mysql_password", default="my8na6xe", help="database password")
-#define("mysql_password", default="YiOO9zQFcixYI", help="database password")
 define("package_query", default="SELECT * FROM package WHERE package_name = %s",
     help="database request to get package by package name")
 define("max_subscribers", default=0, help="")
 define("webcams_directory", default="/var/www/vhosts/beroads/public_html/dashboard/webcams/", help="")
 define("webcams_fetch_frequency", default=900000, help="")
 define("traffic_fetch_frequency", default=900000, help="")
-define("apns_certificate", "beroads.pem")
+define("apns_certificate", "beroads.cert")
+define("apns_key", "beroads.key")
 define("gcm_api_key", "AIzaSyC_UN1QUzNZLsyWzCbL2HIDglgN92b5FxY")
-define("apns_sandbox_mode", True)
-
-define("twitter_keys", {
-    "main" : {
-        "consumer_key" : "iteQq6eatYKJwTKfcHcyFQ",
-        "consumer_secret" : "m1V9bs5q1XTejV1MqM6rmGqonNeARoCqS5aO33TxE",
-        "access_token_key" : "351441174-ykJ5w2V5zCcilP3nHb4ihCWXMkPdM03VuAd9s9w2",
-        "access_token_secret" : "d1KIcR6ZYxU5c6Pf7uqjQ88gb46yHyBEEGGY3hrw2Y"
-    },
-    "fr" : {
-        "consumer_key" : "lekthlGntaYeyQFkyXCbQ",
-        "consumer_secret" : "6uABinIZpR5YGrvFeLS6pp2EyF8dXgJEvzddfhU",
-        "access_token_key" : "1890991999-91RGMHrTrCgO8Ll9s91zrJ6XZrakVvlLjnA4pXR",
-        "access_token_secret" : "hMhmFWwbUXqON7rwDaVogFm9ZQsO5Zr87VhosxDmg"
-    },
-    "nl" : {
-        "consumer_key" : "gwC5BwkZxXaS6KEzRQRHow",
-        "consumer_secret" : "NYHcj5gII0CwrY49FuwjWqpSWHfRRQyQVYJta0SPhQ",
-        "access_token_key" : "1890943374-mIlGMbcF5Wnz38UyCvIuP0c0UwsEYdS9Zs3Xsr1",
-        "access_token_secret" : "teHOaVcNY69itdoAnyGV3yuoKtMCaxUJ0ZoV98jwSU"
-    },
-    "de" : {
-        "consumer_key" : "cNX9Fazas6rFyvBZXyEQ",
-        "consumer_secret" : "mDcEC5lulc6mXxnBCZI7PppJOhRLY3cu245Mlb00Yh0",
-        "access_token_key" : "1890967974-nHrVYU3lnHcGMaYnDjvr8jrQpnDiJZ9aVONs4MB",
-        "access_token_secret" : "E2ktf744h3DWFQtPaeeZQbQCILAmcalRdblspAZZd8Q"
-    },
-    "en" : {
-        "consumer_key" : "9O4HYykiJYRaVe2Gkrduw",
-        "consumer_secret" : "JF2Ngwhk8IhINvNL9lQwC6G3bIfvmrfgeW8rOakqq7U",
-        "access_token_key" : "1890992048-UOZYhDcsk7hffKhPs5Dyd15mpKBD3BBwpJ0cY23",
-        "access_token_secret" : "9aXlfLtLQTGCHhUnetskrqumD9XHNUkiP0yubE"
-    }
-})
+define("apns_sandbox_mode", False)
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -224,21 +188,8 @@ class Application(tornado.web.Application):
 
         self.last_insert_time = int(time.time())
         self.gcm = GCM(options.gcm_api_key)
-        self.apns = APNs(use_sandbox=options.apns_sandbox_mode, cert_file=options.apns_certificate)
-
-
-        #twitter bots
-        self.twitter_bots = {}
-        for language in options.twitter_keys:
-            self.twitter_bots[language] = twitter.Api(
-                consumer_key=options.twitter_keys[language]['consumer_key'],
-                consumer_secret=options.twitter_keys[language]['consumer_secret'],
-                access_token_key=options.twitter_keys[language]['access_token_key'],
-                access_token_secret=options.twitter_keys[language]['access_token_secret']
-            )
-
-            if self.twitter_bots[language].VerifyCredentials() is None:
-                raise Exception("Twitter bot credentials are wroooong ! ")
+        self.apns = APNs(use_sandbox=options.apns_sandbox_mode, cert_file=options.apns_certificate,
+            key_file=options.apns_key)
 
         # Have one global connection to the TDT DB across all handlers
         self.db = torndb.Connection(
@@ -288,7 +239,7 @@ class Application(tornado.web.Application):
                         "data": event
                     }
                     logger.info("Sending update to subscriber %s" % subscriber.uuid)
-                    notif = {"uuid" : suscriber.uuid, "type" : "web", "size" : len(str(event)), "time" : int(time.time())}
+                    notif = {"uuid" : subscriber.uuid, "type" : "web", "size" : len(str(event)), "time" : int(time.time())}
                     subscriber.write_message(tornado.escape.json_encode(message))
                     self.log_notification(notif)
 
@@ -308,7 +259,6 @@ class Application(tornado.web.Application):
                         distance = haversine(x, subscriber['coords']) < subscriber['area']
 
                 else:
-                    #TODO : fix this non sense
                     distance = int(haversine({'latitude' : subscriber['coords']['lat'], 'longitude' : subscriber['coords']['lng']},
                             {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
 
@@ -333,7 +283,7 @@ class Application(tornado.web.Application):
                             # Repace reg_id with canonical_id in your database
                             subscriber['registration_id'] = canonical_id
                     notif = {
-                        "uuid" : suscriber['registration_id'],
+                        "uuid" : subscriber['registration_id'],
                         "type" : "gcm",
                         "size" : len(str(event)),
                         "time" : int(time.time())
@@ -349,10 +299,10 @@ class Application(tornado.web.Application):
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
                 if distance < int(subscriber['area']):
                     event['distance'] = distance
-                    #PUBLISH
+                    payload = None
                     try:
                         payload = Payload(alert=event['location'][0:200], sound="default", badge=5)
-                    except apns.PayloadTooLargeError as e:
+                    except PayloadTooLargeError as e:
                         #if the payload is too large, we chomp the alert content
                         logger.exception(e)
                         json_overhead_bytes = len(payload.json())-1
@@ -363,46 +313,12 @@ class Application(tornado.web.Application):
 
                     logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
                     notif = {
-                        "uuid" : suscriber['device_token'],
+                        "uuid" : subscriber['device_token'],
                         "type" : "apns",
                         "size" : len(str(payload)),
                         "time" : int(time.time())
                     }
                     self.log_notification(notif)
-
-        # Twitter
-        for event in events:
-
-            if int(event['time']) > time.time()-(60*60*2):
-                share_url = "http://beroads.com/event/%s"%event['id']
-                place_id = None
-
-                auth = OAuth1(
-                    options.twitter_keys[language]['consumer_key'],
-                    options.twitter_keys[language]['consumer_secret'],
-                    options.twitter_keys[language]['access_token_key'],
-                    options.twitter_keys[language]['access_token_key']
-                )
-
-                payload = {'lat' : event['lat'], 'long' : event['lng']}
-                r = requests.get('https://api.twitter.com/1.1/geo/search.json', params=payload, auth=auth)
-
-                if r.status_code==200:
-                    result = json.loads(r.content)
-                    if len(result['result']['places']):
-                        place_id = result['result']['places'][0]['id']
-
-                status = "%s ... %s"%(
-                    event['location'][0:(140-len(share_url)-4)], share_url)
-
-                logger.info("Publishing status : %s on Twitter..."%status)
-
-                self.twitter_bots[language].PostUpdate(status=status,
-                    latitude=event['lat'],
-                    longitude=event['lng'],
-                    place_id=place_id,
-                    display_coordinates=True
-                )
 
         callback(True)
 
@@ -462,8 +378,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         if (message["coords"] == None):
             raise AttributeError
         else:
-            if (message["coords"]["latitude"] == None or
-                message["coords"]["longitude"] == None):
+            if message["coords"]["latitude"] is None or message["coords"]["longitude"] is None:
                 raise AttributeError
             else:
                 if (message["coords"]["latitude"] > 90
@@ -479,7 +394,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
             if message["area"] < 0:
                 raise ValueError
 
-        if message["language"] == None:
+        if message["language"] is None:
             raise AttributeError
         else:
             if message["language"] not in ["nl", "en", "de", "fr"]:
@@ -531,7 +446,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                     "coords": parsed['coords'],
                     "area": parsed["area"]
                 }
-                for subscriber in self.channels[self.config['language']]:
+                for subscriber in self.channels[config['language']]:
                     if subscriber.uuid == parsed['uuid']:
                         subscriber.config = config
                         ack = {
@@ -581,43 +496,69 @@ class TailSocketHandler(tornado.websocket.WebSocketHandler):
 
 
     def allow_draft76(self):
+        """
+
+        """
         # for iOS 5.0 Safari
         return True
 
     def open(self):
+        """
+
+        """
         self.ws_connections.append(self.ws_connection)
 
     def on_close(self):
+        """
+
+        """
         self.ws_connections.remove(self.ws_connection)
 
     @classmethod
-    def check_file(self):
+    def check_file(cls):
+        """
+
+        """
         where = tailed_file.tell()
         line = tailed_file.readline()
         if not line:
             tailed_file.seek(where)
         else:
+            subscriber=None
             try:
-                for subscriber in self.ws_connections:
+                for subscriber in cls.ws_connections:
                     subscriber.write_message(line)
             except StreamClosedError:
-                self.ws_connections.remove(subscriber)
+                if subscriber:
+                    cls.ws_connections.remove(subscriber)
 
 
 class BaseHandler(tornado.web.RequestHandler):
     @property
     def db(self):
+        """
+
+        """
         return self.application.db
 
     @property
     def gcm(self):
+        """
+
+        """
         return self.application.gcm
 
     @property
     def apns(self):
+        """
+
+        """
         return self.application.apns
 
     def auth(self, username, password):
+        """
+
+        """
         authenticated = self.db.query("SELECT * FROM user WHERE username=%s AND password = UNHEX(%s)",
             username,
             hashlib.sha1(password).hexdigest())
@@ -631,15 +572,18 @@ class GoogleCloudMessagingHandler(BaseHandler):
 
 
     def post(self, *args, **kwargs):
+        """
+
+        """
         try:
             self.logger.info("Request received from android device : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
             if(data['registration_id'] is None or data['registration_id'] == ""):
                 raise AttributeError("registration_id is not set")
 
-            if(data['language'] is None):
+            if data['language'] is None:
                 raise AttributeError("language is not set")
-            if(data['language'] not in ['fr', 'nl', 'en', 'de']):
+            if data['language'] not in ['fr', 'nl', 'en', 'de']:
                 raise AttributeError("language is not valid")
 
             if data['area'] is None or data['area'] == "":
@@ -651,8 +595,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
             if data['coords'] is None or data['coords'] == "":
                 raise AttributeError("coords is not set")
 
-            if (data["coords"]["lat"] == None or
-                data["coords"]["lng"] == None):
+            if data["coords"]["lat"] is None or data["coords"]["lng"] is None:
                 raise AttributeError('latitude is not set')
             else:
                 if (data["coords"]["lat"] > 90
@@ -681,32 +624,43 @@ class GoogleCloudMessagingHandler(BaseHandler):
 
 class AppleSendNotificationHandler(BaseHandler):
     def get(self, *args, **kwargs):
+        """
+
+        """
         if self.get_argument("device_token") is not None and self.get_argument("message") is not None:
-            message = APNSNotification()
-            alert = APNSAlert()
-            alert.body(str(self.get_argument("message")))
-            message.tokenHex(self.get_argument("device_token"))
-            #the entire payload is limited to 256bytes so we put an arbitrary limit on 220 chars for the text
-            message.alert(alert)
-            message.badge(1)
-            message.sound()
-            self.apns.append(message)
-            self.apns.notify()
+            message = str(self.get_argument("message"))
+            device_token = self.get_argument("device_token")
+            payload = None
+            try:
+                payload = Payload(alert=message, sound="default", badge=5)
+            except PayloadTooLargeError as e:
+                #if the payload is too large, we chomp the alert content
+                logging.exception(e)
+                json_overhead_bytes = len(payload.json())-1
+                payload = Payload(alert=message[:(MAX_PAYLOAD_LENGTH - json_overhead_bytes)],
+                    sound="default", badge=5)
+
+            self.apns.gateway_server.send_notification(device_token, payload)
+
         else:
             self.send_error(404)
 
 class WebsocketSendNotificationHandler(BaseHandler):
 
     def get(self, *args, **kwargs):
+        """
+
+        """
         if self.get_argument("uuid") is not None and self.get_argument("message") is not None:
-            for subscriber in TrafficSocketHandler.channels[language]:
-                if subscriber.uuid == self.get_argument("uuid"):
-                    message = {
-                        "uuid": subscriber.uuid,
-                        "code": 3,
-                        "data": self.get_argument("message")
-                    }
-                    subscriber.write_message(tornado.escape.json_encode(message))
+            for language in TrafficSocketHandler.channels:
+                for subscriber in TrafficSocketHandler.channels[language]:
+                    if subscriber.uuid == self.get_argument("uuid"):
+                        message = {
+                            "uuid": subscriber.uuid,
+                            "code": 3,
+                            "data": self.get_argument("message")
+                        }
+                        subscriber.write_message(tornado.escape.json_encode(message))
         else:
             self.send_error(404)
 
@@ -719,9 +673,11 @@ class ApplePushNotificationServerHandler(BaseHandler):
 
     @classmethod
     def feedback(cls):
+        """
+            Requests APNS feedback server to remove disconnected device from list.
+        """
         logger = logging.getLogger("APNS feedback")
-        for (token_hex, fail_time) in self.apns.feedback_server.items():
-
+        for (token_hex, fail_time) in self.application.apns.feedback_server.items():
             logger.info("Device token %s unavailable since %s"%(token_hex, fail_time.strftime("%m %d %Y %H:%M:%S")))
             for channel in cls.apns_connections:
                 for subscriber in channel:
@@ -729,15 +685,18 @@ class ApplePushNotificationServerHandler(BaseHandler):
                         channel.remove(subscriber)
 
     def post(self, *args, **kwargs):
+        """
+            Blah blah blah
+        """
         try:
             self.logger.info("Request received from iDevice : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
-            if(data['device_token'] is None or data['device_token'] == ""):
+            if data['device_token'] is None or data['device_token'] == "":
                 raise AttributeError("device_token is not set")
 
-            if(data['language'] is None):
+            if data['language'] is None:
                 raise AttributeError("language is not set")
-            if(data['language'] not in ['fr', 'nl', 'en', 'de']):
+            if data['language'] not in ['fr', 'nl', 'en', 'de']:
                 raise AttributeError("language is not valid")
 
             if data['area'] is None or data['area'] == "":
@@ -749,8 +708,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
             if data['coords'] is None or data['coords'] == "":
                 raise AttributeError("coords is not set")
 
-            if (data["coords"]["latitude"] == None or
-                data["coords"]["longitude"] == None):
+            if data["coords"]["latitude"] is None or data["coords"]["longitude"] is None:
                 raise AttributeError('latitude is not set')
             else:
                 if (float(data["coords"]["latitude"]) > 90
@@ -824,6 +782,9 @@ class DeploymentHandler(BaseHandler):
 @require_basic_auth
 class DashboardHandler(BaseHandler):
     def get(self, basicauth_user, basicauth_pass):
+        """
+
+        """
         if self.auth(basicauth_user, basicauth_pass):
             self.set_header("Content-Type", "text/html; charset=UTF-8")
 
@@ -869,8 +830,9 @@ class DashboardHandler(BaseHandler):
             events_count = []
             for language in traffic_feed_channels:
                 events_count.append(len(
-                    self.db.query("SELECT * FROM trafic WHERE language = %s AND time >= CURRENT_DATE AND "
-                                  "time < CURRENT_DATE + INTERVAL 1 DAY"%(language))))
+                    self.db.query(
+                        'SELECT * FROM trafic WHERE language = %s AND time >= CURRENT_DATE '
+                        'AND time < CURRENT_DATE + INTERVAL 1 DAY' %language)))
 
             google_subscribers = GoogleCloudMessagingHandler.gcm_connections
             apple_subscribers = ApplePushNotificationServerHandler.apns_connections
@@ -895,6 +857,7 @@ class AnalyticsSubscribersHandler(BaseHandler):
             Compute per OS requests percentage and send them back.
         """
 
+        data = {}
         if self.auth(basicauth_user, basicauth_pass):
             if subscriber_type in self.subscribers_types:
                 if subscriber_type == "web":
