@@ -1,15 +1,29 @@
-from APNSWrapper import *
-import binascii
+from apnsclient import *
 
-t = "E19 Bxl/Bsl > Mons-Valenciennes(F) # A54 (E420) Nivelles > Charleroi a Arquennes" 
-lio = '1ca6cb0daf757a87b60dccb9104a7855952573000c0e34ad4ddee94aa2967ed3'
-quentin = '6ec924310e1fe65573c83b7fe08a7de398cc282fd9c7ccf88528b0945cdad42f'
-deviceToken = binascii.unhexlify(quentin);
-wrapper = APNSNotificationWrapper('beroads.pem', True)
-message = APNSNotification()
-message.token(deviceToken)
-message.alert(t[0:219])
-message.badge(5)
-message.sound()
-wrapper.append(message)
-wrapper.notify()
+try:
+    device_token = "1fa5768e51239294ea6ec93ccdf98a7664161c22bba5157999c910c1b22d892f"
+    session = Session()
+    certificate = Certificate(cert_file="beroads.pem", key_file="beroads.pem", passphrase="lio")
+    con = session.get_connection("push_production", certificate=certificate)
+    message = Message([device_token], alert="My message", badge=10)
+
+    # Send the message.
+    srv = APNs(con)
+    res = srv.send(message)
+
+    # Check failures. Check codes in APNs reference docs.
+    for token, reason in res.failed.items():
+        code, errmsg = reason
+        print "Device faled: {0}, reason: {1}".format(token, errmsg)
+
+    # Check failures not related to devices.
+    for code, errmsg in res.errors:
+        print "Error: ", errmsg
+
+    # Check if there are tokens that can be retried
+    if res.needs_retry():
+        # repeat with retry_message or reschedule your task
+        retry_message = res.retry()
+
+except Exception as e:
+    print e.message
