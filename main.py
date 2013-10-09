@@ -145,7 +145,12 @@ logging.basicConfig(filename='beroads.log', level=logging.INFO,
 define("mysql_host", default="localhost", help="database host")
 define("mysql_database", default="beroads", help="database name")
 define("mysql_user", default="root", help="database user")
+<<<<<<< HEAD
 define("mysql_password", default="my8na6xe", help="database password")
+=======
+#define("mysql_password", default="my8na6xe", help="database password")
+define("mysql_password", default="YiOO9zQFcixYI", help="database password")
+>>>>>>> 0de2115a99e7ff0152947fc8560373486dd681b3
 define("package_query", default="SELECT * FROM package WHERE package_name = %s",
     help="database request to get package by package name")
 define("max_subscribers", default=0, help="")
@@ -156,6 +161,42 @@ define("apns_certificate", "beroads.cert")
 define("apns_key", "beroads.key")
 define("gcm_api_key", "AIzaSyC_UN1QUzNZLsyWzCbL2HIDglgN92b5FxY")
 define("apns_sandbox_mode", False)
+<<<<<<< HEAD
+=======
+
+define("twitter_keys", {
+    "main" : {
+        "consumer_key" : "iteQq6eatYKJwTKfcHcyFQ",
+        "consumer_secret" : "m1V9bs5q1XTejV1MqM6rmGqonNeARoCqS5aO33TxE",
+        "access_token_key" : "351441174-ykJ5w2V5zCcilP3nHb4ihCWXMkPdM03VuAd9s9w2",
+        "access_token_secret" : "d1KIcR6ZYxU5c6Pf7uqjQ88gb46yHyBEEGGY3hrw2Y"
+    },
+    "fr" : {
+        "consumer_key" : "lekthlGntaYeyQFkyXCbQ",
+        "consumer_secret" : "6uABinIZpR5YGrvFeLS6pp2EyF8dXgJEvzddfhU",
+        "access_token_key" : "1890991999-91RGMHrTrCgO8Ll9s91zrJ6XZrakVvlLjnA4pXR",
+        "access_token_secret" : "hMhmFWwbUXqON7rwDaVogFm9ZQsO5Zr87VhosxDmg"
+    },
+    "nl" : {
+        "consumer_key" : "gwC5BwkZxXaS6KEzRQRHow",
+        "consumer_secret" : "NYHcj5gII0CwrY49FuwjWqpSWHfRRQyQVYJta0SPhQ",
+        "access_token_key" : "1890943374-fEke8UGBUsb0L0onbbexXz2RLed04G6uDJLJiWf",
+        "access_token_secret" : "I09VORcgGcq7GAyUJPCWL1OhjQtQB3rtZgyEp5PDI"
+    },
+    "de" : {
+        "consumer_key" : "cNX9Fazas6rFyvBZXyEQ",
+        "consumer_secret" : "mDcEC5lulc6mXxnBCZI7PppJOhRLY3cu245Mlb00Yh0",
+        "access_token_key" : "1890967974-yi8M6gon8L4eqHT4iOqaZopqMjkCTWj50DfRY5o",
+        "access_token_secret" : "HGjbpOzZU86k532nx44UD0R9yqliSGKaDf6L61FfKk"
+    },
+    "en" : {
+        "consumer_key" : "9O4HYykiJYRaVe2Gkrduw",
+        "consumer_secret" : "JF2Ngwhk8IhINvNL9lQwC6G3bIfvmrfgeW8rOakqq7U",
+        "access_token_key" : "1890992048-HTvKluMInxAyl9JcAGuxt4RqsyNvuabK2tJvkHr",
+        "access_token_secret" : "7j7HpyjTFzBFuJ3SGXTMK7SfsxHCgIHNc8uAvH2lR0"
+    }
+})
+>>>>>>> 0de2115a99e7ff0152947fc8560373486dd681b3
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -196,7 +237,6 @@ class Application(tornado.web.Application):
             host="localhost", database=options.mysql_database,
             user=options.mysql_user, password=options.mysql_password)
 
-    @tornado.web.asynchronous
     def log_notification(self, notif):
         """
             Logs a notification into our mysql database
@@ -212,7 +252,6 @@ class Application(tornado.web.Application):
         try:
             rows = self.db.query("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d"%
                                    (language, self.last_insert_time))
-            self.last_insert_time = int(time.time())
             callback(rows)
         except Exception as e:
             logging.error(e)
@@ -301,8 +340,13 @@ class Application(tornado.web.Application):
                     event['distance'] = distance
                     payload = None
                     try:
+<<<<<<< HEAD
                         payload = Payload(alert=event['location'][0:200], sound="default", badge=5)
                     except PayloadTooLargeError as e:
+=======
+                        payload = Payload(alert=event['location'], sound="default", badge=5)
+                    except apns.PayloadTooLargeError as e:
+>>>>>>> 0de2115a99e7ff0152947fc8560373486dd681b3
                         #if the payload is too large, we chomp the alert content
                         logger.exception(e)
                         json_overhead_bytes = len(payload.json())-1
@@ -323,6 +367,17 @@ class Application(tornado.web.Application):
         callback(True)
 
     @tornado.gen.engine
+    def feedback(self):
+        logger = logging.getLogger("APNS feedback")
+        for (token_hex, fail_time) in self.apns.feedback_server.items():
+
+            logger.info("Device token %s unavailable since %s"%(token_hex, fail_time.strftime("%m %d %Y %H:%M:%S")))
+            for channel in ApplePushNotificationServerHandler.apns_connections:
+                for subscriber in channel:
+                    if subscriber['device_token'] == token_hex:
+                        channel.remove(subscriber)
+
+    @tornado.gen.engine
     def load_traffic(self):
         """
 
@@ -333,9 +388,11 @@ class Application(tornado.web.Application):
             for language in languages:
                 logger.info("Fetching %s traffic ..."%language)
                 new_events = yield tornado.gen.Task(self.traffic_differ, language)
-                if new_events is not None:
+                logger.info("Got %d new events"%len(new_events))
+		if new_events is not None:
                     published = yield tornado.gen.Task(self.notify_subscribers, language, new_events)
-        except Exception as e:
+            self.last_insert_time = int(time.time())
+	except Exception as e:
             logger.exception(e)
 
 
@@ -671,6 +728,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
     apns_connections = {'fr': [], 'nl': [], 'de': [], 'en': []}
     SUPPORTED_METHODS = ("POST")
 
+<<<<<<< HEAD
     @classmethod
     def feedback(cls):
         """
@@ -684,6 +742,9 @@ class ApplePushNotificationServerHandler(BaseHandler):
                     if subscriber['device_token'] == token_hex:
                         channel.remove(subscriber)
 
+=======
+    
+>>>>>>> 0de2115a99e7ff0152947fc8560373486dd681b3
     def post(self, *args, **kwargs):
         """
             Blah blah blah
@@ -829,10 +890,20 @@ class DashboardHandler(BaseHandler):
             traffic_feed_channels = TrafficSocketHandler.channels
             events_count = []
             for language in traffic_feed_channels:
+<<<<<<< HEAD
+                events_count.append(len(self.db.query("SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE"%(language)))) 
+
+=======
                 events_count.append(len(
+<<<<<<< HEAD
                     self.db.query(
                         'SELECT * FROM trafic WHERE language = %s AND time >= CURRENT_DATE '
                         'AND time < CURRENT_DATE + INTERVAL 1 DAY' %language)))
+=======
+                    self.db.query("SELECT * FROM trafic WHERE language = %s AND time >= CURRENT_DATE AND "
+                                  "time < CURRENT_DATE + INTERVAL 1 DAY"%(language))))
+>>>>>>> e75589f8e5d3259965645f5ec3a62fb685af5f97
+>>>>>>> 0de2115a99e7ff0152947fc8560373486dd681b3
 
             google_subscribers = GoogleCloudMessagingHandler.gcm_connections
             apple_subscribers = ApplePushNotificationServerHandler.apns_connections
@@ -1385,7 +1456,7 @@ if __name__ == "__main__":
         tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
         tailed_callback.start()
 
-        feedback_callback = tornado.ioloop.PeriodicCallback(ApplePushNotificationServerHandler.feedback, 3600000)
+        feedback_callback = tornado.ioloop.PeriodicCallback(app.feedback, values.time)
         feedback_callback.start()
 
         main_loop.start()
