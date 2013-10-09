@@ -61,12 +61,12 @@ class Tools:
     """
 
     def __init__(self):
-        self.a=6378388
+        self.a=6378388.0
         self.f=1/297
         self.x0=150000.013
         self.y0=5400088.438
         self.e = math.sqrt(2*self.f-self.f*self.f)
-        self.p0=math.radians(90)
+        self.p0=math.radians(90.0)
         self.p1=math.radians(49.83333367)
         self.p2=math.radians(51.166664006)
         self.l0=math.radians(4.367158666)
@@ -87,10 +87,10 @@ class Tools:
         t = math.pow((r/(self.a*self.g)),1/self.n)
         theta = math.atan((x-self.x0)/(self.r0-y+self.y0))
         lam = (theta/self.n)+self.l0
-        phi = math.pi/2 - 2 * math.atan(t) #this is a wild guess
+        phi = math.pi/2.0 - 2.0 * math.atan(t) #this is a wild guess
         #we're going to make this guess better on each iteration
         for i in range(0,10):
-            phi = math.pi/2 - 2 * math.atan(t * math.pow((1-self.e*math.sin(phi))/(1+self.e*math.sin(phi)), self.e/2))
+            phi = math.pi/2 - 2 * math.atan(t * math.pow((1.0-self.e*math.sin(phi))/(1.0+self.e*math.sin(phi)), self.e/2.0))
 
         return {"latitude" : math.degrees(phi), "longitude" : math.degrees(lam)}
 
@@ -457,8 +457,10 @@ class TrafficLoader:
         con = None
         cursor = None
         try:
-            con = MySQLdb.connect('localhost', 'root', 'my8na6xe', 'beroads', charset='utf8')
-            counter = 0
+            con = MySQLdb.connect('localhost', 'root', 'YiOO9zQFcixYI', 'beroads', charset='utf8')
+            cursor = con.cursor()
+	    cursor.execute("UPDATE trafic SET active = 0 WHERE 1")
+	    counter = 0
             while counter < 16:
                 if not in_queue.empty():
                     item = in_queue.get(True, 0.5)
@@ -476,9 +478,9 @@ class TrafficLoader:
                         row = cursor.fetchone()
                         if row is None:
                             query = "INSERT INTO trafic \
-                                                    (region, language, location, message, category, source, hash, lat, lng, time, insert_time) \
+                                                    (region, language, location, message, category, source, hash, lat, lng, time, insert_time, active) \
                                                     VALUES \
-                                                     (\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\", %f, %f, %d, %d)"%(
+                                                     (\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\", %f, %f, %d, %d, 1)"%(
                                 con.escape_string(item['region']),
                                 con.escape_string(item['language']),
                                 con.escape_string(item['location']),
@@ -492,7 +494,9 @@ class TrafficLoader:
                                 int(time.time())
                             )
                             cursor.execute(query)
-                        cursor.close()
+                        else:
+			     cursor.execute("UPDATE trafic SET active = 1 WHERE hash = '%s'"%item['hash'])
+			cursor.close()
             con.commit()
             con.close()
         except KeyboardInterrupt as e:
