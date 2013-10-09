@@ -1,9 +1,13 @@
 from apnsclient import *
+import os
 
 try:
+    cert_path = os.path.join(os.path.dirname(__file__), 'beroads.cert')
+    key_path = os.path.join(os.path.dirname(__file__), 'beroads.key')
+
     device_token = "1fa5768e51239294ea6ec93ccdf98a7664161c22bba5157999c910c1b22d892f"
     session = Session()
-    certificate = Certificate(cert_file="beroads.pem", key_file="beroads.pem", passphrase="lio")
+    certificate = Certificate(cert_file=cert_path, key_file=key_path, passphrase="lio")
     con = session.get_connection("push_production", certificate=certificate)
     message = Message([device_token], alert="My message", badge=10)
 
