@@ -869,8 +869,14 @@ class DashboardHandler(BaseHandler):
             traffic_feed_channels = TrafficSocketHandler.channels
             events_count = []
             for language in traffic_feed_channels:
+<<<<<<< HEAD
                 events_count.append(len(self.db.query("SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE"%(language)))) 
 
+=======
+                events_count.append(len(
+                    self.db.query("SELECT * FROM trafic WHERE language = %s AND time >= CURRENT_DATE AND "
+                                  "time < CURRENT_DATE + INTERVAL 1 DAY"%(language))))
+>>>>>>> e75589f8e5d3259965645f5ec3a62fb685af5f97
 
             google_subscribers = GoogleCloudMessagingHandler.gcm_connections
             apple_subscribers = ApplePushNotificationServerHandler.apns_connections
