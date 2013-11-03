@@ -1,4 +1,4 @@
 *.json
 *.log
-webcams/
+webcams/*
 dashboard/
