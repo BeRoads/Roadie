@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import memcache
 import sys
 import apns
 import tornado.escape
@@ -24,7 +24,7 @@ from math import radians, cos, sin, asin, sqrt, atan2
 import uuid
 
 from gcm import *
-from apns import APNs, Payload, MAX_PAYLOAD_LENGTH, PayloadTooLargeError
+from apnsclient import *
 
 def require_basic_auth(handler_class):
     # Should return the new _execute function, one which enforces
@@ -146,7 +146,6 @@ define("mysql_host", default="localhost", help="database host")
 define("mysql_database", default="beroads", help="database name")
 define("mysql_user", default="root", help="database user")
 define("mysql_password", default="my8na6xe", help="database password")
-define("mysql_password", default="YiOO9zQFcixYI", help="database password")
 define("package_query", default="SELECT * FROM package WHERE package_name = %s",
     help="database request to get package by package name")
 define("max_subscribers", default=0, help="")
@@ -178,8 +177,9 @@ class Application(tornado.web.Application):
             (r"/analytics/os/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsOSHandler),
             (r"/analytics/language/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsLanguageHandler),
             (r"/analytics/browser/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsBrowserHandler),
-            (r"/analytics/mobile/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsMobileHandler),
+            (r"/analytics/device/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsDeviceHandler),
             (r"/analytics/hit/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsHitHandler),
+            (r"/analytics/notification/([0-9a-zA-Z_\-]+)", AnalyticsNotificationsHandler),
             (r"/analytics/coordinates/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsCoordinateHandler),
             (r"/analytics/logs", TailSocketHandler),
             (r"/deployment/([0-9a-zA-Z_\-]+)", DeploymentHandler)
@@ -190,19 +190,20 @@ class Application(tornado.web.Application):
         self.last_insert_time = int(time.time())
         self.gcm = GCM(options.gcm_api_key)
         certificate = Certificate(cert_file=options.apns_certificate, key_file=options.apns_key, passphrase="lio")
+        session = Session()
         con = session.get_connection("push_production", certificate=certificate)
         self.apns = APNs(con)
         # Have one global connection to the TDT DB across all handlers
         self.db = torndb.Connection(
             host="localhost", database=options.mysql_database,
             user=options.mysql_user, password=options.mysql_password)
-        self.cache = memcache.Client(['127.0.0.1:11221'], debug=True)
+        self.cache = memcache.Client(['127.0.0.1:11211'], debug=True)
 
         for contype in ['apns', 'gcm', 'web']:
             for language in ['fr','nl', 'de', 'en']:
-                subscribers = self.cache.get('subscribers.%s.%s'%(contype, language))
+                subscribers = self.cache.get(str('subscribers.%s.%s'%(contype, language)))
                 if subscribers is None:
-                    self.cache.set('subscribers.%s.%s'%(contype, language), [])
+                    self.cache.set(str('subscribers.%s.%s'%(contype, language)), [])
 
 
     def log_notification(self, notif):
@@ -219,7 +220,7 @@ class Application(tornado.web.Application):
         #traffic differ with mysql stored events (md5 hash)
         try:
             rows = self.db.query("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d"%
-                                   (language, self.last_insert_time))
+                                 (language, self.last_insert_time))
             callback(rows)
         except Exception as e:
             logging.error(e)
@@ -233,7 +234,7 @@ class Application(tornado.web.Application):
         logger = logging.getLogger("notification pusher")
         logger.info("Notifying subscribers from channel %s" % language)
 
-        for subscriber in self.cache.get('subscribers.web.%s'%language):
+        for subscriber in self.cache.get(str('subscribers.web.%s'%language)):
             for event in events:
                 distance = int(haversine(subscriber.coords,
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
@@ -252,7 +253,7 @@ class Application(tornado.web.Application):
 
 
         # Google Cloud Service
-        subscribers = self.cache.get('subscriber.gcm.%s'%language)
+        subscribers = self.cache.get(str('subscribers.gcm.%s'%language))
         for subscriber in subscribers:
             for event in events:
                 distance = sys.maxint
@@ -286,7 +287,7 @@ class Application(tornado.web.Application):
                                 logger.error("Device %s not registered, removing from channel %s"%
                                              (subscriber["registration_id"], language))
                                 subscribers.delete(subscriber)
-                                self.cache.set('subscribers.gcm.%s'%language, subscribers)
+                                self.cache.set(str('subscribers.gcm.%s'%language), subscribers)
                     if 'canonical' in response:
                         for reg_id, canonical_id in response['canonical'].items():
                             # Repace reg_id with canonical_id in your database
@@ -301,12 +302,12 @@ class Application(tornado.web.Application):
 
 
         # Apple APNS
-        subscribers = self.cache.get('subscribers.apns.%s'%language)
+        subscribers = self.cache.get(str('subscribers.apns.%s'%language))
         for subscriber in subscribers:
             for event in events:
                 distance = int(haversine(subscriber['coords'],
                         {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
-                if distance < int(subscriber['area']):
+                if distance < 10:
                     event['distance'] = distance
 
                     message = Message([subscriber['device_token']], alert=event['location'], badge=5)
@@ -317,7 +318,7 @@ class Application(tornado.web.Application):
                         code, errmsg = reason
                         logger.error("Device faled: {0}, reason: {1}".format(token, errmsg))
                         subscribers.remove(subscriber)
-                        self.cache.set('subscribers.apns.%s'%language, subscribers)
+                        self.cache.set(str('subscribers.apns.%s'%language), subscribers)
 
                     # Check failures not related to devices.
                     for code, errmsg in res.errors:
@@ -333,7 +334,7 @@ class Application(tornado.web.Application):
                     notif = {
                         "uuid" : subscriber['device_token'],
                         "type" : "apns",
-                        "size" : len(str(payload)),
+                        "size" : len(str(message)),
                         "time" : int(time.time())
                     }
                     self.log_notification(notif)
@@ -346,15 +347,15 @@ class Application(tornado.web.Application):
 
         """
         logger = logging.getLogger("APNS feedback")
-        for (token_hex, fail_time) in self.apns.feedback_server.items():
+        for token, when in self.apns.feedback():
 
-            logger.info("Device token %s unavailable since %s"%(token_hex, fail_time.strftime("%m %d %Y %H:%M:%S")))
+            logger.info("Device token %s unavailable since %s"%(token_hex, str(when)))
             for language in ['fr', 'nl', 'de', 'en']:
-                subscribers = self.cache.get('subscribers.apns.%s'%language)
+                subscribers = self.cache.get(str('subscribers.apns.%s'%language))
                 for subscriber in subscribers:
-                    if subscriber['device_token'] == token_hex:
+                    if subscriber['device_token'] == token:
                         subscribers.remove(subscriber)
-                        self.cache.set('subscribers.apns.%s'%language, subscribers)
+                        self.cache.set(str('subscribers.apns.%s'%language), subscribers)
 
     @tornado.gen.engine
     def load_traffic(self):
@@ -368,10 +369,10 @@ class Application(tornado.web.Application):
                 logger.info("Fetching %s traffic ..."%language)
                 new_events = yield tornado.gen.Task(self.traffic_differ, language)
                 logger.info("Got %d new events"%len(new_events))
-		if new_events is not None:
+                if new_events is not None:
                     published = yield tornado.gen.Task(self.notify_subscribers, language, new_events)
             self.last_insert_time = int(time.time())
-	except Exception as e:
+        except Exception as e:
             logger.exception(e)
 
 
@@ -395,9 +396,9 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(tornado.escape.json_encode(ack))
 
     def on_close(self):
-        subscribers = self.cache.get('subscribers.web.%s'%self.language)
+        subscribers = self.cache.get(str('subscribers.web.%s'%self.language))
         subscribers.remove(self)
-        self.cache.set('subscribers.web.%s'%self.language, subscribers)
+        self.cache.set(str('subscribers.web.%s'%self.language), subscribers)
 
     @classmethod
     def publish(cls, channel, message):
@@ -471,9 +472,9 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                 self.coords = parsed['coords']
                 self.area = parsed["area"]
 
-                subscribers = self.cache.get('subscribers.web.%s'%language)
+                subscribers = self.cache.get(str('subscribers.web.%s'%language))
                 subscribers.append(self)
-                self.cache.set('subscribers.web.%s'%language, subscribers)
+                self.cache.set(str('subscribers.web.%s'%language), subscribers)
 
                 ack = {
                     "uuid": self.uuid,
@@ -652,7 +653,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
                     raise ValueError("longitude is not valid")
 
             present = False
-            subscribers = self.cache.get('subscribers.gcm.%s'%data['language'])
+            subscribers = self.cache.get(str('subscribers.gcm.%s'%data['language']))
             for subscriber in subscribers:
                 if subscriber['registration_id'] == data['registration_id']:
                     subscriber = data
@@ -661,7 +662,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
             if not present:
                 data['timestamp'] = time.time()
                 subscribers.append(data)
-                self.cache.set('subscribers.gcm.%s'%data['language'], subscribers)
+                self.cache.set(str('subscribers.gcm.%s'%data['language']), subscribers)
 
             self.set_status(200)
 
@@ -701,7 +702,7 @@ class WebsocketSendNotificationHandler(BaseHandler):
         """
         if self.get_argument("uuid") is not None and self.get_argument("message") is not None:
             for language in ['fr', 'nl', 'de', 'en']:
-                subscriber = self.cache.get('subscribers.web.%s'%language)
+                subscriber = self.cache.get(str('subscribers.web.%s'%language))
                 for subscriber in subscribers:
                     if subscriber.uuid == self.get_argument("uuid"):
                         message = {
@@ -729,7 +730,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
         for token, when in service.feedback():
             cls.logger.info("Removing token %s"%token)
             for language in ['fr', 'nl', 'de', 'en']:
-                subscribers = cls.cache.get('subscribers.apns.%s'%language)
+                subscribers = cls.cache.get(str('subscribers.apns.%s'%language))
                 for subscriber in subscribers:
                     if subscriber['device_token'] == token:
                         subscribers.remove(subscriber)
@@ -775,7 +776,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
                     data['coords']['longitude'] = float(data['coords']['longitude'])
 
             present = False
-            subscribers = self.cache.get('subscribers.apns.%s'%data['language'])
+            subscribers = self.cache.get(str('subscribers.apns.%s'%data['language']))
             for subscriber in subscribers:
                 if subscriber['device_token'] == data['device_token']:
                     subscriber = data
@@ -785,7 +786,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
                 data['timestamp'] = time.time()
                 subscribers.append(data)
 
-            self.cache.set('subscribers.apns.%s'%data['language'], subscribers)
+            self.cache.set(str('subscribers.apns.%s'%data['language']), subscribers)
             self.set_status(200)
 
         except Exception as e:
@@ -835,6 +836,15 @@ class DeploymentHandler(BaseHandler):
 
 @require_basic_auth
 class DashboardHandler(BaseHandler):
+
+    #for monitoring purpose
+    def head(self, basicauth_user, basicauth_pass):
+        if self.auth(basicauth_user, basicauth_pass):
+            return
+        else:
+            self.send_error(403)
+
+
     def get(self, basicauth_user, basicauth_pass):
         """
 
@@ -880,34 +890,34 @@ class DashboardHandler(BaseHandler):
                 for r_row in self.db.query("SELECT resource_name FROM resource WHERE package_id = %s", p_row['id']):
                     packages[p_row['package_name']].append(str(r_row['resource_name']))
 
-            traffic_feed_channels = TrafficSocketHandler.channels
             events_count = []
-            for language in traffic_feed_channels:
+            for language in ['fr', 'nl', 'de', 'en']:
                 events_count.append(len(self.db.query("SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE"%(language))))
 
 
             google_subscribers = dict(
                 fr=self.cache.get('subscribers.gcm.fr'),
                 nl=self.cache.get('subscribers.gcm.nl'),
-                de==self.cache.get('subscribers.gcm.de'),
+                de=self.cache.get('subscribers.gcm.de'),
                 en=self.cache.get('subscribers.gcm.en')
             )
             apple_subscribers = dict(
                 fr=self.cache.get('subscribers.apns.fr'),
                 nl=self.cache.get('subscribers.apns.nl'),
-                de==self.cache.get('subscribers.apns.de'),
+                de=self.cache.get('subscribers.apns.de'),
                 en=self.cache.get('subscribers.apns.en')
             )
             web_subscribers = dict(
                 fr=self.cache.get('subscribers.web.fr'),
                 nl=self.cache.get('subscribers.web.nl'),
-                de==self.cache.get('subscribers.web.de'),
+                de=self.cache.get('subscribers.web.de'),
                 en=self.cache.get('subscribers.web.en')
             )
 
+            apple_total = sum(len(v) for v in apple_subscribers.itervalues())
             self.render("templates/index.html", username=basicauth_user, sources=sources,
-                traffic_feed_channels=traffic_feed_channels, google_subscribers=google_subscribers,
-                events_count=events_count, apple_subscribers=apple_subscribers, web_subscribers=web_subscribers,
+                traffic_feed_channels=['fr', 'nl', 'de', 'en'], google_subscribers=google_subscribers,
+                events_count=events_count, apple_subscribers=apple_subscribers, apple_total = apple_total, web_subscribers=web_subscribers,
                 packages=packages)
         else:
             self.send_error(403)
@@ -931,21 +941,21 @@ class AnalyticsSubscribersHandler(BaseHandler):
                     data = dict(
                         fr=self.cache.get('subscribers.web.fr'),
                         nl=self.cache.get('subscribers.web.nl'),
-                        de==self.cache.get('subscribers.web.de'),
+                        de=self.cache.get('subscribers.web.de'),
                         en=self.cache.get('subscribers.web.en')
                     )
                 elif subscriber_type == "google":
                     data = dict(
                         fr=self.cache.get('subscribers.gcm.fr'),
                         nl=self.cache.get('subscribers.gcm.nl'),
-                        de==self.cache.get('subscribers.gcm.de'),
+                        de=self.cache.get('subscribers.gcm.de'),
                         en=self.cache.get('subscribers.gcm.en')
                     )
                 elif subscriber_type == "apple":
                     data = dict(
                         fr=self.cache.get('subscribers.apns.fr'),
                         nl=self.cache.get('subscribers.apns.nl'),
-                        de==self.cache.get('subscribers.apns.de'),
+                        de=self.cache.get('subscribers.apns.de'),
                         en=self.cache.get('subscribers.apns.en')
                     )
 
@@ -992,55 +1002,18 @@ class AnalyticsOSHandler(BaseHandler):
     def parse_user_agents(self, package, resource, start_date, end_date, callback):
         rows = self.db.query("""
                SELECT COUNT(*) as total,
-              CASE
-              WHEN LOWER(user_agent) LIKE "%%windows nt 6.2%%" THEN "Windows 8"
-              WHEN LOWER(user_agent) LIKE "%%windows nt 6.1%%" THEN "Windows 7"
-              WHEN LOWER(user_agent) LIKE "%%windows nt 6.0%%" THEN "Windows Vista"
-              WHEN LOWER(user_agent) LIKE "%%windows nt 5.2%%" THEN "Windows Server 2003/XP x64"
-              WHEN LOWER(user_agent) LIKE "%%windows nt 5.1%%" THEN "Windows XP"
-              WHEN LOWER(user_agent) LIKE "%%windows nt 5.0%%" THEN "Windows 2000"
-              WHEN LOWER(user_agent) LIKE "%%windows me%%" THEN "Windows ME"
-              WHEN LOWER(user_agent) LIKE "%%win98%%" THEN "Windows 98"
-              WHEN LOWER(user_agent) LIKE "%%win95%%" THEN "Windows 95"
-              WHEN LOWER(user_agent) LIKE "%%win16%%" THEN "Windows 3.1"
-              WHEN LOWER(user_agent) LIKE "%%macintosh%%" THEN "Mac OSX"
-              WHEN LOWER(user_agent) LIKE "%%mac_powerpc%%" THEN "Mac OS 9"
-              WHEN LOWER(user_agent) LIKE "%%linux%%" THEN "Linux"
-              WHEN LOWER(user_agent) LIKE "%%iphone%%" THEN "iOS"
-              WHEN LOWER(user_agent) LIKE "%%ipod%%" THEN "iOS"
-              WHEN LOWER(user_agent) LIKE "%%ipad%%" THEN "iOS"
-              WHEN LOWER(user_agent) LIKE "%%android%%" THEN "Android"
-              WHEN LOWER(user_agent) LIKE "%%blackberry%%" THEN "Blackberry"
-              WHEN LOWER(user_agent) LIKE "%%iemobile%%" THEN "Windows Phone"
-              ELSE "Other"
-              END as os
+                os
               FROM requests
-              WHERE (LOWER(user_agent) LIKE "%%windows nt 6.2%%"
-              OR LOWER(user_agent) LIKE "%%windows nt 6.1%%"
-              OR LOWER(user_agent) LIKE "%%windows nt 6.0%%"
-              OR LOWER(user_agent) LIKE "%%windows nt 5.2%%"
-              OR LOWER(user_agent) LIKE "%%windows nt 5.1%%"
-              OR LOWER(user_agent) LIKE "%%windows nt 5.0%%"
-              OR LOWER(user_agent) LIKE "%%windows me%%"
-              OR LOWER(user_agent) LIKE "%%win98%%"
-              OR LOWER(user_agent) LIKE "%%win95%%"
-              OR LOWER(user_agent) LIKE "%%win16%%"
-              OR LOWER(user_agent) LIKE "%%macintosh%%"
-              OR LOWER(user_agent) LIKE "%%mac_powerpc%%"
-              OR LOWER(user_agent) LIKE "%%linux%%"
-              OR LOWER(user_agent) LIKE "%%iphone%%"
-              OR LOWER(user_agent) LIKE "%%ipod%%"
-              OR LOWER(user_agent) LIKE "%%ipad%%"
-              OR LOWER(user_agent) LIKE "%%android%%"
-              OR LOWER(user_agent) LIKE "%%blackberry%%"
-              OR LOWER(user_agent) LIKE "%%iemobile%%")
-              AND time >= %s AND time <= %s AND package LIKE %s AND resource LIKE %s GROUP BY os ORDER BY time DESC""",
+              WHERE LOWER(`user_agent`) NOT LIKE "%%curl%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%python%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%wget%%" AND time >= %s AND
+              time <= %s AND package LIKE %s AND resource LIKE %s GROUP BY os ORDER BY time DESC""",
             int(start_date), int(end_date), str(package), str(resource))
         data = []
         try:
             for row in rows:
                 data.append({
-                    'name': row['os'],
+                    'name': row['os'] if row['os'] is not None else "other",
                     'total': int(row['total'])
                 })
             callback(data)
@@ -1086,24 +1059,12 @@ class AnalyticsBrowserHandler(BaseHandler):
 
     def parse_user_agents(self, package, resource, start_date, end_date, callback):
         rows = self.db.query("""
-                SELECT COUNT(*) as total,
-                CASE
-                  WHEN LOWER(user_agent) LIKE "%%firefox/%%" THEN "Firefox"
-                  WHEN LOWER(user_agent) LIKE "%%chrome/%%" THEN "Chrome"
-                  WHEN LOWER(user_agent) LIKE "%%chromium/%%" THEN "Chromium"
-                  WHEN LOWER(user_agent) LIKE "%%safari/%%" THEN "Safari"
-                  WHEN LOWER(user_agent) LIKE "%%opera/%%" THEN "Opera"
-                  WHEN LOWER(user_agent) LIKE "%%;msie%%" THEN "Internet Explorer"
-                  ELSE "Other"
-                  END as browser
+                SELECT COUNT(*) as total, browser
                   FROM requests
-                  WHERE (LOWER(user_agent) LIKE "%%firefox/%%"
-                  OR LOWER(user_agent) LIKE "%%chrome/%%"
-                  OR LOWER(user_agent) LIKE "%%chromium/%%"
-                  OR LOWER(user_agent) LIKE "%%safari/%%"
-                  OR LOWER(user_agent) LIKE "%%opera/%%"
-                  OR LOWER(user_agent) LIKE "%%;msie%%")
-                  AND time >= %s AND time <= %s AND package LIKE %s AND resource LIKE %s
+                  WHERE LOWER(`user_agent`) NOT LIKE "%%curl%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%python%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%wget%%"
+                   AND time >= %s AND time <= %s AND package LIKE %s AND resource LIKE %s
                   GROUP BY browser
                   ORDER BY time DESC""",
             int(start_date), int(end_date), package, resource)
@@ -1111,8 +1072,9 @@ class AnalyticsBrowserHandler(BaseHandler):
         data = []
         try:
             for row in rows:
+
                 data.append({
-                    'name': row['browser'],
+                    'name': row['browser'] if row['browser'] is not None else "other",
                     'total': int(row['total'])
                 })
             callback(data)
@@ -1235,20 +1197,24 @@ class AnalyticsHitHandler(BaseHandler):
 
 
     def parse_hits(self, package, resource, start_date, end_date, frequency, callback):
-        d = {'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
+        d = {'hourly' : 'hour', 'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
 
         rows = self.db.query("""
                         SELECT
                             COUNT(*) as hits,
-                            FROM_UNIXTIME(time, \"%%j\") as day,
-                            FROM_UNIXTIME(time, \"%%u\") as week,
-                            FROM_UNIXTIME(time, \"%%m\") as month,
-                            FROM_UNIXTIME(time, \"%%Y\") as year,
-                            FROM_UNIXTIME(time, \"%%d-%%m-%%Y\") as name
+                            FROM_UNIXTIME(time, \"%%h:%%m %%d-%%m-%%Y\") as name,
+                            FROM_UNIXTIME(time, \"%%h %%d-%%m-%%Y\") as hour,
+                            FROM_UNIXTIME(time, \"%%d-%%m-%%Y\") as day,
+                            FROM_UNIXTIME(time, \"%%u-%%Y\") as week,
+                            FROM_UNIXTIME(time, \"%%m-%%Y\") as month,
+                            FROM_UNIXTIME(time, \"%%Y\") as year
                             FROM requests
                             WHERE time >= %s AND time <= %s AND package LIKE %s AND
-                    resource LIKE %s AND (LOWER(`user_agent`) NOT LIKE "%%python%%" AND LOWER(`user_agent`) NOT LIKE "%%wget%%")
-                    GROUP BY """ + d[frequency] + """ ORDER BY time ASC
+                    resource LIKE %s
+                    AND LOWER(`user_agent`) NOT LIKE "%%curl%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%python%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%wget%%"
+                     GROUP BY """ + d[frequency] + """ ORDER BY time ASC
                     """, int(start_date), int(end_date), str(package), str(resource))
 
         data = []
@@ -1264,6 +1230,63 @@ class AnalyticsHitHandler(BaseHandler):
             callback(data)
         return
 
+@require_basic_auth
+class AnalyticsNotificationsHandler(BaseHandler):
+    """
+
+    """
+
+    @tornado.web.asynchronous
+    @tornado.gen.engine
+    def get(self, frequency, basicauth_user, basicauth_pass):
+        """
+
+        """
+        if self.auth(basicauth_user, basicauth_pass):
+            start_date = self.get_argument('start_date', 0)
+            end_date = self.get_argument('end_date', time.time())
+
+            data = yield tornado.gen.Task(self.parse_notifications, start_date, end_date, frequency)
+            self.set_header("Content-Type", "text/json; charset=UTF-8")
+            self.write(tornado.escape.json_encode(data))
+            self.finish()
+
+        else:
+            self.write_error(403)
+
+
+    def parse_notifications(self, start_date, end_date, frequency, callback):
+        d = {'hourly' :'hour', 'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
+
+        rows = self.db.query("""
+                        SELECT
+                            COUNT(*) as notifications,
+                            type,
+                            FROM_UNIXTIME(time, \"%%h:%%m %%d-%%m-%%Y\") as name,
+                            FROM_UNIXTIME(time, \"%%h %%d-%%m-%%Y\") as hour,
+                            FROM_UNIXTIME(time, \"%%d-%%m-%%Y\") as day,
+                            FROM_UNIXTIME(time, \"%%u-%%Y\") as week,
+                            FROM_UNIXTIME(time, \"%%m-%%Y\") as month,
+                            FROM_UNIXTIME(time, \"%%Y\") as year
+                            FROM notification_logs
+                            WHERE time >= %s AND time <= %s
+                    GROUP BY """ + d[frequency] + """, type ORDER BY time ASC
+                    """, int(start_date), int(end_date))
+
+        data = [{}]
+        try:
+            for row in rows:
+                if row['type'] not in data[0]:
+                    data[0][row['type']] = []
+                data[0][row['type']].append({
+                    'name': row['name'],
+                    'total': int(row['notifications'])
+                })
+            callback(data)
+        except Exception, e:
+            logging.error(e)
+            callback(data)
+        return
 
 @require_basic_auth
 class AnalyticsLanguageHandler(BaseHandler):
@@ -1297,14 +1320,7 @@ class AnalyticsLanguageHandler(BaseHandler):
 
     def parse_languages(self, package, resource, start_date, end_date, callback):
         rows = self.db.query("""
-            SELECT
-                CASE
-                    WHEN LOWER(`url_request`) LIKE "%%/fr/%%" THEN "French"
-                    WHEN LOWER(`url_request`) LIKE "%%/nl/%%" THEN "Dutch"
-                    WHEN LOWER(`url_request`) LIKE "%%/en/%%" THEN "English"
-                    WHEN LOWER(`url_request`) LIKE "%%/de/%%" THEN "German"
-                    ELSE "Other"
-                END AS language,
+            SELECT language,
                 COUNT(id) AS hits,
                 (COUNT(id)*100 /
                     (SELECT COUNT(*)
@@ -1319,12 +1335,9 @@ class AnalyticsLanguageHandler(BaseHandler):
                 FROM
                     requests
                 WHERE
-                    (LOWER(`user_agent`) NOT LIKE "%%python%%" AND LOWER(`user_agent`) NOT LIKE "%%wget%%")
-                    AND (
-                        LOWER(`url_request`) like "%%/fr/%%"
-                        OR LOWER(`url_request`) like "%%/nl/%%"
-                        OR LOWER(`url_request`) like "%%/de/%%"
-                        OR LOWER(`url_request`) like "%%/en/%%")
+                    LOWER(`user_agent`) NOT LIKE "%%curl%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%python%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%wget%%"
                 AND time >= %s AND time <= %s AND package LIKE %s AND
                     resource LIKE %s GROUP BY language ORDER BY hits DESC
                     """, int(start_date), int(end_date), package, resource)
@@ -1333,7 +1346,7 @@ class AnalyticsLanguageHandler(BaseHandler):
         try:
             for row in rows:
                 data.append({
-                    'name': row['language'],
+                    'name': row['language'] if row['language'] is not None else "other",
                     'total': int(row['hits'])
                 })
             callback(data)
@@ -1344,7 +1357,7 @@ class AnalyticsLanguageHandler(BaseHandler):
 
 
 @require_basic_auth
-class AnalyticsMobileHandler(BaseHandler):
+class AnalyticsDeviceHandler(BaseHandler):
     """
 
     """
@@ -1378,60 +1391,20 @@ class AnalyticsMobileHandler(BaseHandler):
 
     def parse_user_agents(self, package, resource, start_date, end_date, callback):
         rows = self.db.query("""SELECT COUNT(*) as total,
-            CASE
-            WHEN user_agent LIKE "%%iPhone%%" THEN "iPhone"
-            WHEN user_agent LIKE "%%iPod%%" THEN "iPod"
-            WHEN user_agent LIKE "%%iPad%%" THEN "iPad"
-            WHEN user_agent LIKE "%%Android%%" THEN "Android"
-            WHEN user_agent LIKE "%%BlackBerry%%" THEN "BlackBerry"
-            WHEN user_agent LIKE "%%IEMobile%%" THEN "IEMobile"
-            WHEN user_agent LIKE "%%Kindle%%" THEN "Kindle"
-            WHEN user_agent LIKE "%%NetFront%%" THEN "NetFront"
-            WHEN user_agent LIKE "%%Silk-Accelerated%%" THEN "Silk-Accelerated"
-            WHEN user_agent LIKE "%%hpwOS%%" THEN "WebOS"
-            WHEN user_agent LIKE "%%webOS%%" THEN "webOS"
-            WHEN user_agent LIKE "%%Minimo%%" THEN "Minimo"
-            WHEN user_agent LIKE "%%Fennec%%" THEN "Fennec"
-            WHEN user_agent LIKE "%%Opera Mobi%%" THEN "Opera Mobile"
-            WHEN user_agent LIKE "%%Opera Mini%%" THEN "Opera Mini"
-            WHEN user_agent LIKE "%%Blazer%%" THEN "Blazer"
-            WHEN user_agent LIKE "%%Dolfin%%" THEN "Dolfin"
-            WHEN user_agent LIKE "%%Dolphin%%" THEN "Dolphin"
-            WHEN user_agent LIKE "%%Skyfire%%" THEN "Skyfire"
-            WHEN user_agent LIKE "%%Zune%%" THEN "Zune"
-            ELSE "Other"
-            END as browser
+            device
             FROM requests
             WHERE time >= %s AND time <= %s AND package LIKE %s
             AND resource LIKE %s
-            AND (user_agent LIKE "%%iPhone%%"
-            OR user_agent LIKE "%%iPod%%"
-            OR user_agent LIKE "%%iPad%%"
-            OR user_agent LIKE "%%Android%%"
-            OR user_agent LIKE "%%BlackBerry%%"
-            OR user_agent LIKE "%%IEMobile%%"
-            OR user_agent LIKE "%%Kindle%%"
-            OR user_agent LIKE "%%NetFront%%"
-            OR user_agent LIKE "%%Silk-Accelerated%%"
-            OR user_agent LIKE "%%hpwOS%%"
-            OR user_agent LIKE "%%webOS%%"
-            OR user_agent LIKE "%%Minimo%%"
-            OR user_agent LIKE "%%Fennec%%"
-            OR user_agent LIKE "%%Opera Mobi%%"
-            OR user_agent LIKE "%%Opera Mini%%"
-            OR user_agent LIKE "%%Blazer%%"
-            OR user_agent LIKE "%%Dolfin%%"
-            OR user_agent LIKE "%%Dolphin%%"
-            OR user_agent LIKE "%%Skyfire%%"
-            OR user_agent LIKE "%%Zune%%")
-            AND (LOWER(`user_agent`) NOT LIKE "%%python%%" AND LOWER(`user_agent`) NOT LIKE "%%wget%%")
-            GROUP BY browser ORDER BY time DESC""", int(start_date), int(end_date), package, resource)
+            AND LOWER(`user_agent`) NOT LIKE "%%curl%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%python%%"
+                    AND LOWER(`user_agent`) NOT LIKE "%%wget%%"
+            GROUP BY device ORDER BY time DESC""", int(start_date), int(end_date), package, resource)
 
         data = []
         try:
             for row in rows:
                 data.append({
-                    'name': row['browser'],
+                    'name': row['device'] if row['device'] is not None else "other",
                     'total': int(row['total'])
                 })
             callback(data)
@@ -1470,5 +1443,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         logging.exception(e)
         sys.exit(0)
-
-

@@ -126,7 +126,17 @@
                 <div class="row"><hr/></div>
 
         </div>
-        <div class="tab-pane span12" id="tab2">
+        <div class="tab-pane" id="tab2">
+
+        <div class="row">
+
+        <div id="notificationChart" style="width:100%;height: 300px;"></div>
+
+        
+        </div>
+        <div class="row">
+        <hr />
+        </div>
 
         <div class="tabbable"> <!-- Only required for left/right tabs -->
         <ul class="nav nav-tabs">
@@ -163,11 +173,8 @@
             <div class="row">
                 <hr/>
             </div>
-            <div class="row">
-                <div class="span12">
-                    <div id="web_subscribers_map" style="height:50pc;"></div>
-                </div>
-            </div>
+                    <div id="web_subscribers_map" style="width:100%;height:600px;"></div>
+
             </div>
             <div class="tab-pane" id="google_subscribers">
             <div class="row">
@@ -198,11 +205,7 @@
                 <div class="row">
                     <hr/>
                 </div>
-                <div class="row">
-                    <div class="span12">
-                        <div id="google_subscribers_map" style="padding: 0 0 0 0;height:25pc;"></div>
-                    </div>
-                </div>
+                <div id="google_subscribers_map" style="width:100%;height:600px;"></div>
                 </div>
             <div class="tab-pane" id="apple_subscribers">
             <div class="row">
@@ -232,18 +235,16 @@
                 <div class="row">
                     <hr/>
                 </div>
-                <div class="row">
-                    <div class="span12">
-                        <div id="apple_subscribers_map" style="padding: 0 0 0 0;height:25pc;cursor:pointer;"></div>
-                    </div>
-                </div>
+                
+                        <div id="apple_subscribers_map" style="width:100%;height:600px;"></div>
+  
 
                 </div>
 
         </div>
         </div>
         </div>
-        <div class="tab-pane span12" id="tab3">
+        <div class="tab-pane" id="tab3">
 
             <div class="row" id="webcams_grid">
 
@@ -253,86 +254,62 @@
 
             <div class="row">
                 <div class="span12">
-                    <form class="form-inline">
-                        From: <input type="text" class="input-small" data-date-format="dd-mm-yyyy" value="" id="dpd1" >
-                        To: <input type="text" class="input-small" data-date-format="dd-mm-yyyy" value="" id="dpd2" >
 
 
-                        <select id="resource" class="selectpicker pull-right">
-
-                        </select>
-
-                        <select id="package" class="selectpicker pull-right">
-                            <option value="all">All</option>
+                    <select id="package" class="selectpicker pull-left">
+                        <option value="all">All</option>
                         {% for package in packages.keys() %}
-                            <option>{{ package }}</option>
+                        <option>{{ package }}</option>
                         {% end %}
-                        </select>
+                    </select>
 
-                    </form>
+                    <select id="resource" class="selectpicker pull-left">
 
-                        <hr/>
+                    </select>
+
+                    <div class="btn-group pull-right">
+                        <button type="button" class="btn btn-default" onclick="loadToday();">Today</button>
+                        <button type="button" class="btn btn-default" onclick="loadYesterday();">Yesterday</button>
+                        <button type="button" class="btn btn-default" onclick="loadLastMonth();">Last 30 days</button>
+                        <button type="button" class="btn btn-default" onclick="loadLastYear();">Last year</button>
+                    </div>
+
+
+
+
                     </div>
                 </div>
-                <div class="row">
-                    <div class="progress span12">
-                        <div class="bar" id="progressBar" style="width: 0%;"></div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="span12">
-                        <h2>Hits</h2>
-                        <p><ul id="frequency" class="nav nav-pills">
-                        <li value='daily' >
-                            <a href="#" onclick="loadHitsChart(getFrequency(),
-                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
-                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
-                            $('#package').val(),
-                            $('#resource').val());">Daily</a>
-                        </li>
-                        <li value='weekly' ><a href="#" onclick="loadHitsChart(getFrequency(),
-                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
-                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
-                            $('#package').val(),
-                            $('#resource').val());">Weekly</a></li>
-                        <li value='monthly' class="active"><a href="#" onclick="loadHitsChart(getFrequency(),
-                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
-                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
-                            $('#package').val(),
-                            $('#resource').val());">Monthly</a></li>
-                        <li value='yearly' ><a href="#" onclick="loadHitsChart(getFrequency(),
-                            Math.round(new Date($('#dpd1').val()).getTime()/1000),
-                            Math.round(new Date($('#dpd2').val()).getTime()/1000),
-                            $('#package').val(),
-                            $('#resource').val());">Yearly</a></li>
-                    </ul></p>
-                       </div>
-                    </div>
             <div class="row">
-                <span id="hits_line" class="span12" style="height:300px;width:1100px;"></span>
-            </div>
-
-            <hr/>
-
-            <div id="myCarousel" style="height:400px" class="carousel slide">
-                <ol class="carousel-indicators">
-                    <li data-target="#myCarousel" data-slide-to="0" class="active"></li>
-                    <li data-target="#myCarousel" data-slide-to="1"></li>
-                    <li data-target="#myCarousel" data-slide-to="2"></li>
-                    <li data-target="#myCarousel" data-slide-to="3"></li>
-                </ol>
-                <!-- Carousel items -->
-                <div class="carousel-inner">
-                    <div class="active item"><h2>Browsers</h2><span class="span6 offset2" id="browsers_pie"></span></div>
-                    <div class="item"><h2>Mobile Browsers</h2><span class="span6 offset2" id="mobile_browsers_pie"></span></div>
-                    <div class="item"><h2>Operating System</h2><span class="span6 offset2"  id="os_pie"></span></div>
-                    <div class="item"><h2>Languages</h2><span class="span6 offset2" id="languages_pie"></span></div>
+                <hr/>
                 </div>
-                <!-- Carousel nav -->
-                <a class="carousel-control left" href="#myCarousel" data-slide="prev">&lsaquo;</a>
-                <a class="carousel-control right" href="#myCarousel" data-slide="next">&rsaquo;</a>
+            <div class="row">
+                <div class="span12">
+                    <h2>Hits</h2>
+                    <div id="hitsChart" style="height: 300px; width: 100%;"></div>
+                </div>
+
             </div>
+
+            <div class="row">
+            <hr/>
+            </div>
+            <br />
+            <br />
+            <div class="row">
+
+                <div class="span4">
+                    <div id="deviceChart" style="height: 300px; width: 100%;"></div>
+                </div>
+                <div class="span4">
+                    <div id="osChart" style="height: 300px; width: 100%;"></div>
+                </div>
+                <div class="span4">
+                    <div id="languageChart" style="height: 300px; width: 100%;"></div>
+                </div>
+            </div>
+            <br />
+            <br />
+
 
             <hr/>
 
@@ -377,13 +354,65 @@
 <script type="text/javascript" src="/static/js/jquery.pnotify.min.js"></script>
 <script type="text/javascript" src="/static/js/ext-core.js"></script>
 <script type="text/javascript" src="/static/js/ext-chart.js"></script>
+<script type="text/javascript" src="/static/js/canvasjs.min.js"></script>
 <script type="text/javascript" src="http://maps.google.com/maps/api/js?libraries=visualization&sensor=false"></script>
+<script src="http://google-maps-utility-library-v3.googlecode.com/svn/trunk/markerclusterer/src/markerclusterer.js" type="text/javascript"></script>
 
 <script type="text/javascript">
 
-    var languagesPie, hitsChart, browsersPie, mobileBrowsersPie, osPie, heatMap, webSubscribersMap, googleSubscribersMap,
-            appleSubscribersMap, map, checkin, checkout;
-    var loaded = 0;
+    var heatMap, webSubscribersMap, googleSubscribersMap, appleSubscribersMap, map;
+
+    var loadToday = function() {
+        var from = new Date();
+        from.setHours(0);
+        var to = new Date();
+        to.setHours(23);
+
+        loadHitsChart('hourly', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadNotificationsChart('hourly', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000));
+        loadLanguagesPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadDevicePie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadOSPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadHeatMap(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), 'IWay', 'TrafficEvent');
+    };
+    var loadYesterday = function() {
+        var from = new Date();
+        from.setDate(from.getDate()-1);
+        from.setHours(0);
+        var to = new Date();
+        to.setDate(to.getDate()-1);
+        to.setHours(23);
+
+        loadHitsChart('hourly', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadNotificationsChart('hourly', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000));
+        loadLanguagesPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadDevicePie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadOSPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadHeatMap(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), 'IWay', 'TrafficEvent');
+    };
+    var loadLastMonth = function() {
+        var from = new Date();
+        from.setDate(from.getDate()-30);
+        var to = new Date(new Date().getFullYear(), 11, 31);
+
+        loadHitsChart('daily', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadNotificationsChart('daily', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000));
+        loadLanguagesPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadDevicePie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadOSPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadHeatMap(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), 'IWay', 'TrafficEvent');
+    };
+    var loadLastYear = function() {
+        var from = new Date(new Date().getFullYear(), 0, 1);
+        var to = new Date(new Date().getFullYear(), 11, 31);
+
+        loadHitsChart('monthly', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadNotificationsChart('monthly', Math.round(from.getTime()/1000), Math.round(to.getTime()/1000));
+        loadLanguagesPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadDevicePie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadOSPie(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadHeatMap(Math.round(from.getTime()/1000), Math.round(to.getTime()/1000), 'IWay', 'TrafficEvent');
+    };
 
     var deploy_tdt = function(){
         try {
@@ -530,18 +559,22 @@
             zoom: 7,
             mapTypeId: google.maps.MapTypeId.ROADMAP
         });
-	
-	$.each(data, function(key, val) {
+
+        var markers = [];
+
+        $.each(data, function(key, val) {
             $.each(data[key], function(key2, val2) {
-          	var myLatLng = new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude);
-		var marker = new google.maps.Marker({
+                var myLatLng = new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude);
+                markers.push(
+                    new google.maps.Marker({
                         position : myLatLng,
                         map : webSubscribersMap,
                         title : val2.uuid
-                });
-		console.log(marker);
+                    })
+                );
             });
         });
+        var mc = new MarkerClusterer(webSubscribersMap, markers);
     };
 
     var buildAppleSubscribersMap = function(data){
@@ -553,17 +586,18 @@
             zoom: 7,
             mapTypeId: google.maps.MapTypeId.ROADMAP
         });
-    
-	$.each(data, function(key, val) {
+        var markers = [];
+	    $.each(data, function(key, val) {
             $.each(data[key], function(key2, val2) {
-                console.log(val2);
-		var marker = new google.maps.Marker({
+                markers.push(
+                    new google.maps.Marker({
                         position : new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude),
                         map : appleSubscribersMap,
                         title : val2.device_token
-                });
+                }));
             });
         });
+        var mc = new MarkerClusterer(appleSubscribersMap, markers);
     };
 
     var buildGoogleSubscribersMap = function(data){
@@ -575,15 +609,20 @@
             zoom: 7,
             mapTypeId: google.maps.MapTypeId.ROADMAP
         });
+        var markers = [];
         $.each(data, function(key, val) {
             $.each(data[key], function(key2, val2) {
-		var marker = new google.maps.Marker({
-			position : new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude),
-			map : googleSubscribersMap,
-			title : val2.registration_id
-		});
-	    });
+		        markers.push(
+                        new google.maps.Marker({
+			                position : new google.maps.LatLng(val2.coords.latitude, val2.coords.longitude),
+			                map : googleSubscribersMap,
+			                title : val2.registration_id
+		                })
+                );
+	        });
         });
+        var mc = new MarkerClusterer(googleSubscribersMap, markers);
+
     };
 
 
@@ -616,59 +655,9 @@
 
             });
             heatMap.setMap(map);
-            loaded++;
 
     };
 
-    var buildHitsChart = function(data){
-        var hitsStore = new Ext.data.JsonStore({
-            fields: ['name', 'total'],
-            data: data
-        });
-        hitsChart = new Ext.chart.Chart({
-            id : 'hitsChart',
-            width : 1100,
-            height: 300,
-            layout: 'fit',
-            hidden: false,
-            maximizable: true,
-            title: 'Line Chart',
-            renderTo: Ext.get('hits_line'),
-
-            style: 'background:#fff',
-            animate: true,
-            store: hitsStore,
-            axes: [
-                {
-                    type: 'Numeric',
-                    minimum: 0,
-                    position: 'left',
-                    fields: ['total'],
-                    title: 'Hits',
-                    minorTickSteps: 1,
-                    grid: true
-                },
-                {
-                    type: 'Category',
-                    position: 'bottom',
-                    fields: ['name'],
-                    title: 'Time'
-                }
-            ],
-            series: [
-                {
-                    type: 'line',
-                    displayName: 'Hits',
-                    yField: 'total',
-                    xField : 'name',
-                    style: {
-                        'stroke-width': 2,
-                        color: '#16A085'
-                    }
-                }
-            ]
-        });
-    };
     /**
      *
      * @param frequency
@@ -678,6 +667,8 @@
     var loadHitsChart = function(frequency, startDate, endDate, package, resource){
 
         try {
+            var intervalTypes = {'daily' : 'day', 'weekly' : 'week', 'monthly' : 'month', 'yearly' : 'year'};
+            var valueFormatStrings = {'hourly' : 'HH:mm', 'daily' : 'DD-MM-YYYY', 'weekly' : 'MMM', 'monthly' : 'MMM', 'yearly' : 'YYYY'};
             var url = '/analytics/hit/'+package+'/'+resource+'/'+frequency+'?';
             $.getJSON(url,
                     {
@@ -686,22 +677,69 @@
                     })
                     .done(function(data) {
                         if(data.length>0){
-                            if(hitsChart == undefined || hitsChart == null){
-                                $('#hits_line').html("");
-                                buildHitsChart(data);
+                            var dataPoints = [];
 
-                            }else{
-                                hitsChart.store.loadData(data);
-                                hitsChart.redraw();
+                            $.each(data, function(index, value){
+
+                                var hour = value['name'].split(' ')[0].split(':')[0];
+                                var day = value['name'].split(' ')[1].split('-')[0];
+                                var month = value['name'].split(' ')[1].split('-')[1]-1;
+                                var year = value['name'].split(' ')[1].split('-')[2];
+
+
+                                var date = new Date(year, month, day, hour);
+                                console.log(value['name'].split(' ')[1]);
+                                console.log(hour);
+                            if(frequency == "hourly"){
+                                dataPoints.push({x : date, y : value['total']});
                             }
+                            else if(frequency == "daily"){
+                                dataPoints.push({x : date, y : value['total']});
+                              }
+                              else if(frequency == "weekly"){
+                                dataPoints.push({x : date, y : value['total']});
+                              }
+                              else if(frequency == "monthly"){
+                                dataPoints.push({x : date, y : value['total']});
+                              }else if(frequency == "yearly"){
+                                dataPoints.push({x : date, y : value['total']});
+                              }
+                                
+                            });
+                            var chart = new CanvasJS.Chart("hitsChart",
+                                {
+                                  theme: "theme2",
+                                  title:{
+                                    text: ""
+                                  },
+                                  axisX: {
+                                    valueFormatString: valueFormatStrings[frequency],
+                                    interval:1,
+                                    intervalType: intervalTypes[frequency]
+                                    
+                                  },
+                                  axisY:{
+                                    includeZero: false
+                                    
+                                  },
+                                  data: [
+                                  {        
+                                    type: "line",
+                                    //lineThickness: 3,        
+                                    dataPoints: dataPoints
+                                  }
+                                  
+                                  
+                                  ]
+                                });
+                              chart.render();
                         }else{
                             $('#hits_line').html("<div class='alert'><strong>Empty ! </strong>" +
                                     "Not enough data, consider modifying dates parameters</div>");
                         }
                     })
                     .fail(function(){$('#hits_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>");})
-                    .complete(function(){loaded++;});
+                            "Seems an error occured</div>");});
         }catch(err){
             $('#hits_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
@@ -709,33 +747,92 @@
     };
 
 
-    var buildBrowsersPie = function(data) {
-        var browserStore = new Ext.data.JsonStore({
-            fields: ['name', 'total'],
-            data: data
-        });
+    /**
+     *
+     * @param frequency
+     */
+    var loadNotificationsChart = function(frequency, startDate, endDate){
 
-        browsersPie = new Ext.chart.Chart({
-            id : 'browsersPie',
-            width: 600,
-            height: 300,
-            hidden: false,
-            maximizable: false,
-            animate: false,
-            store: browserStore,
-            renderTo: Ext.get('browsers_pie'),
-            shadow: false,
-            legend: {
-                position: 'right',
-                padding: 10
-            },
-            series: [{
-                type: 'pie',
-                field: 'total',
-                showInLegend: true
-            }]
-        });
+        try {
+            var url = '/analytics/notification/'+frequency+'?';
+            $.getJSON(url,
+                    {
+                        start_date : startDate,
+                        end_date : endDate
+                    })
+                    .done(function(data) {
+                        console.log(data);
+                        if(data.length>0){
+                           var dataSet = [];
+
+                            $.each(data, function(index, value){
+                                console.log(data);
+                              dataSet.push({        
+                                  type: "line",
+                                  showInLegend: true,
+                                  lineThickness: 2,
+                                  name: "Visits",
+                                  markerType: "square",
+                                  color: "#F08080",
+                                  dataPoints: []
+                                });
+                              $.each(data[index], function(index2, value2){
+                                dataSet[index].name = index2;
+                                $.each(data[index][index2], function(index3, value3){
+                                    console.log(value3);
+                                    var hour = value3['name'].split(' ')[0].split(':')[0];
+                                    var day = value3['name'].split(' ')[1].split('-')[0];
+                                    var month = value3['name'].split(' ')[1].split('-')[1]-1;
+                                    var year = value3['name'].split(' ')[1].split('-')[2];
+                                    var date = new Date(year, month, day, hour);
+                                  dataSet[index].dataPoints.push({x : date, y : value3['total']});
+                              });
+                              })
+                            });
+                            var chart = new CanvasJS.Chart("notificationChart",
+                              {
+
+                                title:{
+                                  text: "Notifications",
+                                  fontSize: 30
+                                },
+                                axisX:{
+
+                                  gridColor: "Silver",
+                                  tickColor: "silver",
+                                  valueFormatString: "HH:mm DD-MM-YYYY"
+
+                                },                        
+                                                  toolTip:{
+                                                    shared:true
+                                                  },
+                                theme: "theme2",
+                                axisY: {
+                                  gridColor: "Silver",
+                                  tickColor: "silver"
+                                },
+                                legend:{
+                                  verticalAlign: "center",
+                                  horizontalAlign: "right"
+                                },
+                                data: dataSet
+                              });
+
+                        chart.render();
+                        }else{
+                            $('#notificationChart').html("<div class='alert'><strong>Empty ! </strong>" +
+                                    "Not enough data, consider modifying dates parameters</div>");
+                        }
+                    })
+                    .fail(function(){$('#notificationChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");});
+        }catch(err){
+            $('#notificationChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                    "Seems an error occured</div>");
+        }
     };
+
+
 
     /**
      *
@@ -744,134 +841,62 @@
      * @param package
      * @param resource
      */
-    var loadBrowsersPie =function(startDate, endDate, package, resource){
+    var loadDevicePie = function(startDate, endDate, package, resource){
+
         try{
-            var url = '/analytics/browser/'+package+'/'+resource+'?';
+            var url = '/analytics/device/'+package+'/'+resource+'?';
             $.getJSON(url,
                     {
                         start_date : startDate,
                         end_date : endDate
                     })
                     .done(function(data) {
+                        console.log(data);
                         if(data.length>0){
-                            if(browsersPie == undefined || browsersPie == null){
-                                $('#browsers_pie').html("");
-                                buildBrowsersPie(data);
-                            }else{
-                                browsersPie.store.loadData(data);
-                                browsersPie.redraw();
-                            }
+                            var dataPoints = [];
+                            var total = 0;
+                            $.each(data, function(index, value){
+                              total += value['total'];
+                            });
+
+                            $.each(data, function(index, value){
+                              var percentage = ((value['total']/total)*100).toFixed(2);
+                              if(percentage > 5){
+                                dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                              }
+                              
+                            })
+                            var chart = new CanvasJS.Chart("deviceChart",
+                            {
+                              title:{
+                                text: "Mobile"
+                              },          
+                              data: [
+                              {        
+                                type: "doughnut",
+                                startAngle: 60,                          
+                                toolTipContent: "{y} hits",          
+
+                                showInLegend: true,
+                                dataPoints: dataPoints
+                              }
+                              ]
+                            });
+                            chart.render();
                         }else{
-                            $('#browsers_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                            $('#deviceChart').html("<div class='alert'><strong>Empty ! </strong>" +
                                     "Not enough data, consider modifying dates parameters</div>");
                         }
                     })
-                    .fail(function(){$('#browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>");})
-                    .complete(function(){loaded++;});
+                    .fail(function(){$('#deviceChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");});
         }catch(err){
-            $('#browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+            $('#deviceChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
         }
 
     };
 
-
-    var buildMobileBrowsersPie = function(data) {
-        var mobileBrowserStore = new Ext.data.JsonStore({
-            fields: ['name', 'total'],
-            data: data
-        });
-
-        mobileBrowsersPie = new Ext.chart.Chart({
-            id : 'mobileBrowsersPie',
-            width: 600,
-            height: 300,
-            hidden: false,
-            maximizable: false,
-            animate: false,
-            store: mobileBrowserStore,
-            renderTo: Ext.get('mobile_browsers_pie'),
-            shadow: false,
-            legend: {
-                position: 'right',
-                padding: 10
-            },
-            series: [{
-                type: 'pie',
-                field: 'total',
-                showInLegend: true
-            }]
-        });
-    };
-    /**
-     *
-     * @param startDate
-     * @param endDate
-     * @param package
-     * @param resource
-     */
-    var loadMobileBrowsersPie = function(startDate, endDate, package, resource){
-
-        try{
-            var url = '/analytics/mobile/'+package+'/'+resource+'?';
-            $.getJSON(url,
-                    {
-                        start_date : startDate,
-                        end_date : endDate
-                    })
-                    .done(function(data) {
-                        if(data.length>0){
-                            if(mobileBrowsersPie == undefined || mobileBrowsersPie == null){
-                                $('#mobile_browsers_pie').html("");
-                                buildMobileBrowsersPie(data);
-                            }else{
-                                mobileBrowsersPie.store.loadData(data);
-                                mobileBrowsersPie.redraw();
-                            }
-                        }else{
-                            $('#mobile_browsers_pie').html("<div class='alert'><strong>Empty ! </strong>" +
-                                    "Not enough data, consider modifying dates parameters</div>");
-                        }
-                    })
-                    .fail(function(){$('#mobile_browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>");})
-                    .complete(function(){loaded++;});
-        }catch(err){
-            $('#mobile_browsers_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                    "Seems an error occured</div>");
-        }
-
-    };
-
-    var buildOSPie = function(data) {
-
-        var osStore = new Ext.data.JsonStore({
-            fields: ['name', 'total'],
-            data: data
-        });
-
-        osPie = new Ext.chart.Chart({
-            id : 'osPie',
-            width: 600,
-            height: 300,
-            hidden: false,
-            maximizable: false,
-            animate: false,
-            store: osStore,
-            renderTo: Ext.get('os_pie'),
-            shadow: false,
-            legend: {
-                position: 'right',
-                padding: 10
-            },
-            series: [{
-                type: 'pie',
-                field: 'total',
-                showInLegend: true
-            }]
-        });
-    };
     /**
      *
      * @param startDate
@@ -889,55 +914,53 @@
                         end_date : endDate
                     })
                     .done(function(data) {
+                        console.log(data);
                         if(data.length>0){
-                            if(osPie == undefined || osPie == null){
-                                $('#os_pie').html("");
-                                buildOSPie(data);
-                            }else{
-                                osPie.store.loadData(data);
-                                osPie.redraw();
-                            }
+                            var dataPoints = [];
+                            var total = 0;
+                            $.each(data, function(index, value){
+                              total += value['total'];
+                            });
+
+                            $.each(data, function(index, value){
+                              var percentage = ((value['total']/total)*100).toFixed(2);
+                              if(percentage > 5){
+                                dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                              }
+                              
+                            })
+                            var chart = new CanvasJS.Chart("osChart",
+                            {
+                              title:{
+                                text: "OS"
+                              },          
+                              data: [
+                              {        
+                                type: "doughnut",
+                                startAngle: 60,                          
+                                toolTipContent: "{y} hits",          
+
+                                showInLegend: true,
+                                dataPoints: dataPoints
+                              }
+                              ]
+                            });
+                            chart.render();
                         }else{
-                            $('#os_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                            $('#osChart').html("<div class='alert'><strong>Empty ! </strong>" +
                                     "Not enough data, consider modifying dates parameters</div>");
                         }
                     })
-                    .fail(function(){$('#os_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>");})
-                    .complete(function(){loaded++;});
+                    .fail(function(){$('#osChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");});
         }catch(err){
-            $('#os_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+            $('#osChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
         }
     };
 
-    var buildLanguagesPie = function(data) {
-        var languageStore = new Ext.data.JsonStore({
-            fields: ['name', 'total'],
-            data: data
-        });
-        languagesPie = new Ext.chart.Chart({
-            id : 'languagesPie',
-            width: 600,
-            height: 300,
-            hidden: false,
-            maximizable: false,
-            animate: false,
-            store: languageStore,
-            renderTo: Ext.get('languages_pie'),
-            shadow: false,
-            legend: {
-                position: 'right',
-                padding: 10
-            },
-            series: [{
-                type: 'pie',
-                field: 'total',
-                showInLegend: true
-            }]
-        });
 
-    };
+
     /**
      *
      * @param startDate
@@ -948,32 +971,53 @@
     var loadLanguagesPie = function(startDate, endDate, package, resource){
 
         try{
-            var url = '/analytics/language/'+package+'/'+resource+'?';
+            var url = '/analytics/language/IWay/TrafficEvent?';
             $.getJSON(url,
                     {
                         start_date : startDate,
                         end_date : endDate
                     })
                     .done(function(data) {
-
+                        console.log(data);
                         if(data.length>0){
-                            if(languagesPie == undefined || languagesPie == null){
-                                $('#languages_pie').html("");
-                                buildLanguagesPie(data);
-                            }else{
-                                languagesPie.store.loadData(data);
-                                languagesPie.redraw();
-                            }
+                            var dataPoints = [];
+                            var total = 0;
+                            $.each(data, function(index, value){
+                              total += value['total'];
+                            });
+
+                            $.each(data, function(index, value){
+                              var percentage = ((value['total']/total)*100).toFixed(2);
+                              dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                              
+                              
+                            })
+                            var chart = new CanvasJS.Chart("languageChart",
+                            {
+                              title:{
+                                text: "Language"
+                              },          
+                              data: [
+                              {        
+                                type: "doughnut",
+                                startAngle: 60,                          
+                                toolTipContent: "{y} hits",          
+
+                                showInLegend: true,
+                                dataPoints: dataPoints
+                              }
+                              ]
+                            });
+                            chart.render();
                         }else{
-                            $('#languages_pie').html("<div class='alert'><strong>Empty ! </strong>" +
+                            $('#languageChart').html("<div class='alert'><strong>Empty ! </strong>" +
                                     "Not enough data, consider modifying dates parameters</div>");
                         }
                     })
-                    .fail(function(){$('#languages_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>");})
-                    .complete(function(){loaded++;});
+                    .fail(function(){$('#languageChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                            "Seems an error occured</div>");});
         }catch(err){
-            $('#languages_pie').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+            $('#languageChart').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
         }
     };
@@ -1009,8 +1053,7 @@
                 }
             })
             .fail(function(){$('#heatmapArea').html($('#heatmapArea').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>"));})
-            .complete(function(){loaded++;});
+                            "Seems an error occured</div>"));});
         }catch(err){
             $('#heatmapArea').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
@@ -1032,8 +1075,7 @@
 			    }                   	
                     })
                     .fail(function(){$('#web_subscribers_map').html($('#web_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>"));})
-                    .complete(function(){loaded++;});
+                            "Seems an error occured</div>"));});
         }catch(err){
             $('#web_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
@@ -1056,8 +1098,7 @@
 			     }
                     })
                     .fail(function(){$('#google_subscribers_map').html($('#google_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>"));})
-                    .complete(function(){loaded++;});
+                            "Seems an error occured</div>"));});
         }catch(err){
             $('#google_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
@@ -1080,8 +1121,7 @@
 			 }
                     })
                     .fail(function(){$('#apple_subscribers_map').html($('#apple_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>"));})
-                    .complete(function(){loaded++;});
+                            "Seems an error occured</div>"));});
         }catch(err){
             $('#apple_subscribers_map').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
@@ -1095,18 +1135,21 @@
          * with currently selected values (datepickers, resource and package)
          * @type {number}
          */
-        loaded = 0;
+        var today = new Date();
+        today.setDate(today.getDate()-7);
+
+        var today_end = new Date();
+        today_end.setDate(today_end.getDate()-6);
+
         loadWebSubscribersMap();
         loadGoogleSubscribersMap();
         loadAppleSubscribersMap();
-        $('#progressBar').width('O%');
-        loadHitsChart(getFrequency(), Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
-        //loadLanguagesPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
-        //loadBrowsersPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
-        //loadMobileBrowsersPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
-        //loadOSPie(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
-        loadHeatMap(Math.round(checkin.date.getTime()/1000),Math.round(checkout.date.getTime()/1000), $('#package').val(), $('#resource').val());
-        checkLoading();
+        loadHitsChart('hourly', Math.round(today.getTime()/1000), Math.round(today_end.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadNotificationsChart('hourly', Math.round(today.getTime()/1000), Math.round(today_end.getTime()/1000));
+        loadLanguagesPie(Math.round(today.getTime()/1000), Math.round(today_end.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadDevicePie(Math.round(today.getTime()/1000), Math.round(today_end.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadOSPie(Math.round(today.getTime()/1000), Math.round(today_end.getTime()/1000), $('#package').val(), $('#resource').val());
+        loadHeatMap(Math.round(today.getTime()/1000), Math.round(today_end.getTime()/1000), $('#package').val(), $('#resource').val());
     };
 
     var loadWebcams = function(){
@@ -1133,28 +1176,10 @@
                         $('#webcams_grid').html(webcamsGrid);
                     })
                     .fail(function(){$('#webcams_grid').html($('#webcams_grid').html("<div class='alert alert-error'><strong>Oops! </strong>" +
-                            "Seems an error occured</div>"));})
-                    .complete(function(){loaded++;});
+                            "Seems an error occured</div>"));});
         }catch(err){
             $('#webcams_grid').html("<div class='alert alert-error'><strong>Oops! </strong>" +
                     "Seems an error occured</div>");
-        }
-    };
-
-
-    var checkLoading = function() {
-        /**
-         * Update the loading bar while we are fetching analytics data.
-         */
-        if(loaded < 2){
-            var $bar = $('.bar');
-            $bar.width(parseInt((100/6)*loaded)+"%");
-            $bar.text(parseInt((100/6)*loaded)+"%");
-            setTimeout(function(){checkLoading();}, 1000);
-        }else{
-            var $bar = $('.bar');
-            $bar.width("100%");
-            $bar.text("100%");
         }
     };
 
@@ -1207,38 +1232,6 @@
             }
             reloadInterface();
         });
-
-
-        //datepickers
-        var startDate = new Date(new Date().getFullYear(), 0, 1);
-        var endDate = new Date();
-
-        checkin = $('#dpd1').datepicker({
-            onRender: function(date) {
-                return date.valueOf();
-            }
-        }).on('changeDate', function(ev) {
-                    if (ev.date.valueOf() > checkout.date.valueOf()) {
-                        var newDate = new Date(ev.date);
-                        newDate.setDate(newDate.getDate() + 1);
-                        checkout.setValue(newDate);
-                    }
-                    checkin.hide();
-                    $('#dpd2')[0].focus();
-                }).data('datepicker');
-
-        checkout = $('#dpd2').datepicker({
-            onRender: function(date) {
-                return date.valueOf();
-            }
-        }).on('changeDate', function(ev) {
-                    checkout.hide();
-                    reloadInterface();
-        }).data('datepicker');
-
-
-        checkin.setValue(startDate);
-        checkout.setValue(endDate);
 
         reloadInterface();
         loadWebcams();
