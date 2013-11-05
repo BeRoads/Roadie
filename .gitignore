@@ -3,4 +3,4 @@
 *.json
 dashboard/
 webcams/
-
+webcams/**
