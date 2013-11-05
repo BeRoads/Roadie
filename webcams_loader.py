@@ -57,9 +57,8 @@ class WebcamsLoader:
                 input_file = requests.get(input_url, headers={"Referer": referer})
             else:
                 input_file = requests.get(input_url)
-            if input_file.status_code == 200:
-                with open(output_url, "wb") as f:
-                    f.write(input_file.content)
+            with open(output_url, "wb") as f:
+                f.write(input_file.content)
         except KeyboardInterrupt as e:
             self.logger.exception(e)
             sys.exit(0)
@@ -111,7 +110,6 @@ class WebcamsLoader:
             for i in range(0, len(jsonpage['features'])):
                 self.load_image('http://www.bruxellesmobilite.irisnet.be' + jsonpage['features'][i]['properties']['src'],
                     self.webcams_directory + 'brussels/image_ringbxl_' + str(i) + '.jpg')
-
 
             time.sleep(self.sleep_time)
             self.run()

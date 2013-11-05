@@ -86,7 +86,8 @@ class RoadWatcher:
             events = self.load_traffic(language)
             if len(events):
                 self.notify_twitter(language, events)
-
+	
+	self.last_fetch_time = int(time.time())
         time.sleep(self.sleep_time)
         self.run()
 
@@ -102,10 +103,10 @@ class RoadWatcher:
                 place_id = None
 
                 auth = OAuth1(
-                    options.twitter_keys[language]['consumer_key'],
-                    options.twitter_keys[language]['consumer_secret'],
-                    options.twitter_keys[language]['access_token_key'],
-                    options.twitter_keys[language]['access_token_key']
+                    self.twitter_keys[language]['consumer_key'],
+                    self.twitter_keys[language]['consumer_secret'],
+                    self.twitter_keys[language]['access_token_key'],
+                    self.twitter_keys[language]['access_token_key']
                 )
 
                 payload = {'lat' : event['lat'], 'long' : event['lng']}
@@ -141,7 +142,8 @@ class RoadWatcher:
             con = MySQLdb.connect('localhost', 'root', 'cC6GRfysDHyLPH', 'beroads', charset='utf8')
             cursor = con.cursor(MySQLdb.cursors.DictCursor)
             cursor.execute("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d"%(language, self.last_fetch_time))
-            return cursor.fetchall()
+
+	    return cursor.fetchall()
         except KeyboardInterrupt:
             if con:
                 if cursor:

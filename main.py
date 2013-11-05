@@ -145,7 +145,7 @@ logging.basicConfig(filename='beroads.log', level=logging.INFO,
 define("mysql_host", default="localhost", help="database host")
 define("mysql_database", default="beroads", help="database name")
 define("mysql_user", default="root", help="database user")
-define("mysql_password", default="my8na6xe", help="database password")
+define("mysql_password", default="cC6GRfysDHyLPH", help="database password")
 define("package_query", default="SELECT * FROM package WHERE package_name = %s",
     help="database request to get package by package name")
 define("max_subscribers", default=0, help="")
@@ -1322,17 +1322,8 @@ class AnalyticsLanguageHandler(BaseHandler):
         rows = self.db.query("""
             SELECT language,
                 COUNT(id) AS hits,
-                (COUNT(id)*100 /
-                    (SELECT COUNT(*)
-                        FROM requests
-                        WHERE (LOWER(`user_agent`) NOT LIKE "%%python%%" AND LOWER(`user_agent`) NOT LIKE "%%wget%%"
-                    )
-                    AND (
-                        LOWER(`url_request`) LIKE "%%/fr/%%"
-                        OR LOWER(`url_request`) LIKE "%%/nl/%%"
-                        OR LOWER(`url_request`) LIKE "%%/de/%%"
-                        OR LOWER(`url_request`) LIKE "%%/en/%%"))) AS percentage
-                FROM
+                language
+		FROM
                     requests
                 WHERE
                     LOWER(`user_agent`) NOT LIKE "%%curl%%"
