@@ -1,4 +1,6 @@
-beroads.log
+.idea/
+*.log
+*.json
 dashboard/
 webcams/
 
