@@ -65,16 +65,16 @@ class Tools:
         self.f=1/297.0
         self.x0=150000.013
         self.y0=5400088.438
-        self.e = math.sqrt(2.0*self.f-self.f*self.f)
+        self.e = math.sqrt(2*self.f-self.f*self.f)
         self.p0=math.radians(90.0)
         self.p1=math.radians(49.83333367)
         self.p2=math.radians(51.166664006)
         self.l0=math.radians(4.367158666)
-        self.m1= math.cos(self.p1)/math.sqrt(1.0-self.e*self.e*math.sin(self.p1)*math.sin(self.p1))
-        self.m2= math.cos(self.p2)/math.sqrt(1.0-self.e*self.e*math.sin(self.p2)*math.sin(self.p2))
-        self.t1 = math.tan(math.pi/4.0-self.p1/2.0)/math.pow((1.0-self.e*math.sin(self.p1))/(1.0+self.e*math.sin(self.p1)), self.e/2.0)
-        self.t2 = math.tan(math.pi/4.0-self.p2/2.0)/math.pow((1.0-self.e*math.sin(self.p2))/(1.0+self.e*math.sin(self.p2)), self.e/2.0)
-        self.t0 = math.tan(math.pi/4.0-self.p0/2.0)/math.pow((1.0-self.e*math.sin(self.p0))/(1.0+self.e*math.sin(self.p0)), self.e/2.0)
+        self.m1= math.cos(self.p1)/math.sqrt(1-self.e*self.e*math.sin(self.p1)*math.sin(self.p1))
+        self.m2= math.cos(self.p2)/math.sqrt(1-self.e*self.e*math.sin(self.p2)*math.sin(self.p2))
+        self.t1 = math.tan(math.pi/4.0-self.p1/2.0)/math.pow((1-self.e*math.sin(self.p1))/(1+self.e*math.sin(self.p1)), self.e/2.0)
+        self.t2 = math.tan(math.pi/4.0-self.p2/2.0)/math.pow((1-self.e*math.sin(self.p2))/(1+self.e*math.sin(self.p2)), self.e/2.0)
+        self.t0 = math.tan(math.pi/4.0-self.p0/2.0)/math.pow((1-self.e*math.sin(self.p0))/(1.0+self.e*math.sin(self.p0)), self.e/2)
         self.n= (math.log(self.m1)-math.log(self.m2))/(math.log(self.t1)-math.log(self.t2))
         self.g = self.m1/(self.n*math.pow(self.t1,self.n))
         self.r0=self.a*self.g*math.pow(self.t0,self.n)
@@ -534,146 +534,145 @@ class TrafficLoader:
             language = raw_data['language']
             traffic = raw_data['content']
 
-            if traffic is not None:
-                if region == "wallonia":
-                    categories = {"CHANIV1":"others","CHANIV2":"works","CHANIV3":"works","INCNIV1":"events","INCNIV2":"events",
-                        "INCNIV3":"events"}
-                    try:
-                        url = 'http://trafiroutes.wallonie.be/trafiroutes/Rest/Resources/Evenements/All/%s'%language.upper()
-                        page = requests.get(url)
-                        if page.status_code != 200:
-                            raise Exception("Content unavailable on %s"%url)
-                        data = json.loads(page.content)
-                        soup = BeautifulSoup(traffic)
-                        items = soup.findAll('item')
-                        for item in items:
+            if region == "wallonia":
+                categories = {"CHANIV1":"others","CHANIV2":"works","CHANIV3":"works","INCNIV1":"events","INCNIV2":"events",
+                    "INCNIV3":"events"}
+                try:
+                    url = 'http://trafiroutes.wallonie.be/trafiroutes/Rest/Resources/Evenements/All/%s'%language.upper()
+                    page = requests.get(url)
+                    if page.status_code != 200:
+                        raise Exception("Content unavailable on %s"%url)
+                    data = json.loads(page.content)
+                    soup = BeautifulSoup(traffic)
+                    items = soup.findAll('item')
+                    for item in items:
 
-                            node = {
-                                'region' : region,
-                                'language' : language,
-                                'category' : '',
-                                'source' : 'Trafiroutes',
-                                'time' : self.parse_time(region, item.pubdate.string),
-                                'message' : item.description.string,
-                                'location' : item.title.string,
-                            }
+                        node = {
+                            'region' : region,
+                            'language' : language,
+                            'category' : '',
+                            'source' : 'Trafiroutes',
+                            'time' : self.parse_time(region, item.pubdate.string),
+                            'message' : item.description.string,
+                            'location' : item.title.string,
+                        }
 
-                            evt = item.guid.string.replace('http://trafiroutes.wallonie.be/trafiroutes/maptempsreel/?v=EVT', '')
-                            for x in data:
-                                if x['idEvenement']== evt:
-                                    node['lat'] = x['lat']
-                                    node['lng'] = x['lon']
-                                    node['category'] = categories[x['nomIcone']]
-                            out_queue.put(node)
-                        out_queue.put(None)
-                    except Exception as e:
-                        self.logger.exception(e)
+                        evt = item.guid.string.replace('http://trafiroutes.wallonie.be/trafiroutes/maptempsreel/?v=EVT', '')
+                        for x in data:
+                            if x['idEvenement']== evt:
+                                node['lat'] = x['lat']
+                                node['lng'] = x['lon']
+                                node['category'] = categories[x['nomIcone']]
+                        out_queue.put(node)
+                    out_queue.put(None)
+                except Exception as e:
+                    self.logger.exception(e)
 
-                elif region == "flanders":
-                    categories = {
-                        "ongevallen" : "accident",
-                        "files" : "traffic jam",
-                        "wegeninfo" : "info",
-                        "werkzaamheden" : "works"
-                    }
-                    try:
-                        soup = BeautifulSoup(traffic)
+            elif region == "flanders":
+                categories = {
+                    "ongevallen" : "accident",
+                    "files" : "traffic jam",
+                    "wegeninfo" : "info",
+                    "werkzaamheden" : "works"
+                }
+                try:
+                    soup = BeautifulSoup(traffic)
 
-                        items = soup.findAll('item')
-                        for item in items:
+                    items = soup.findAll('item')
+                    for item in items:
 
-                            category = categories[item.category.string]
-                            location = unescape(item.title.string)
+                        category = categories[item.category.string]
+                        location = unescape(item.title.string)
+                        coordinates = geocoder.geocodeData(location, region, language)
+
+                        node = {
+                            'region' : region,
+                            'language' : language,
+                            'category' : category,
+                            'location' : location,
+                            'message' :  unescape(item.description.string),
+                            'time' : self.parse_time(region, item.pubdate.string),
+                            'source' : "Verkeerscentrum",
+                            'lat' : coordinates['lat'],
+                            'lng' : coordinates['lng']
+                        }
+                        out_queue.put(node)
+                    out_queue.put(None)
+                except Exception as e:
+                    self.logger.exception(e)
+
+
+            elif region == "brussels":
+                import time
+                try:
+                    json_tab = json.loads(traffic)
+                    t = Tools()
+                    for element in json_tab['features']:
+
+                        coordinates = element['geometry']['coordinates']
+
+                        #TODO : fix coordinates translation
+                        coordinates = t.lambert_to_WGS84(coordinates[0], coordinates[1])
+
+                        item = {
+                            'region' : region,
+                            'language' : language,
+                            'category' : element['properties']['category'].lower(),
+                            'source' : 'Mobiris',
+                            'time' : datetime.datetime.now(),
+                            'message' : element['properties']['cause'],
+                            'location' : unescape(element['properties']['street_name']),
+                            'lat' : coordinates['latitude'],
+                            'lng' : coordinates['longitude']
+                        }
+                        out_queue.put(item)
+                    out_queue.put(None)
+
+                except Exception as e:
+                    self.logger.exception(e)
+
+            elif region == "federal":
+                try:
+                    soup = BeautifulSoup(traffic)
+                    locations = soup.findAll(name='td', attrs={'class':'textehome', 'valign':'middle', 'width':'475'})
+
+                    dates = soup.findAll(name='td', attrs={'class':'textehome', 'valign':'middle', 'width':'90'})
+                    messages = soup.findAll(name='font', attrs={'class':'textehome'})
+                    locations.pop(0)
+                    dates.pop(0)
+
+                    for message, location, date in zip(messages, locations, dates):
+
+                        message = unescape(re.sub("\s+" , " ", re.sub(r'[\t\n\r]', ' ', re.sub('<[^>]*>', '', str(message)))))
+                        location = unescape(re.sub('<[^>]*>', '', str(location)))
+                        if "FILES - TRAVAUX" not in location and "FILES - WERKEN" not in location:
                             coordinates = geocoder.geocodeData(location, region, language)
-
-                            node = {
-                                'region' : region,
-                                'language' : language,
-                                'category' : category,
-                                'location' : location,
-                                'message' :  unescape(item.description.string),
-                                'time' : self.parse_time(region, item.pubdate.string),
-                                'source' : "Verkeerscentrum",
-                                'lat' : coordinates['lat'],
-                                'lng' : coordinates['lng']
-                            }
-                            out_queue.put(node)
-                        out_queue.put(None)
-                    except Exception as e:
-                        self.logger.exception(e)
-
-
-                elif region == "brussels":
-                    import time
-                    try:
-                        json_tab = json.loads(traffic)
-                        t = Tools()
-                        for element in json_tab['features']:
-
-                            coordinates = element['geometry']['coordinates']
-
-                            #TODO : fix coordinates translation
-                            coordinates = t.lambert_to_WGS84(coordinates[0], coordinates[1])
-
                             item = {
                                 'region' : region,
                                 'language' : language,
-                                'category' : element['properties']['category'].lower(),
-                                'source' : 'Mobiris',
-                                'time' : datetime.datetime.now(),
-                                'message' : element['properties']['cause'],
-                                'location' : unescape(element['properties']['street_name']),
-                                'lat' : coordinates['latitude'],
-                                'lng' : coordinates['longitude']
+                                'message' : message.split(':')[2],
+                                'location' : location,
+                                'source' : message.split(':')[1].replace(" meldt", "").replace(" signale", ""),
+                                'time' : self.parse_time(region, re.sub('<[^>]*>', '', str(date))),
+                                'lat' : coordinates['lat'],
+                                'lng' : coordinates['lng']
                             }
+
+                            #TODO : dutch ?
+                            if "travaux" in message or "chantier" in message:
+                                item['category'] = "works"
+                            elif "accident" in message or "incident" in message:
+                                item['category'] = "events"
+                            else:
+                                item['category'] = "other"
                             out_queue.put(item)
-                        out_queue.put(None)
+                    out_queue.put(None)
 
-                    except Exception as e:
-                        self.logger.exception(e)
+                except Exception as e:
+                    self.logger.exception(e)
 
-                elif region == "federal":
-                    try:
-                        soup = BeautifulSoup(traffic)
-                        locations = soup.findAll(name='td', attrs={'class':'textehome', 'valign':'middle', 'width':'475'})
-
-                        dates = soup.findAll(name='td', attrs={'class':'textehome', 'valign':'middle', 'width':'90'})
-                        messages = soup.findAll(name='font', attrs={'class':'textehome'})
-                        locations.pop(0)
-                        dates.pop(0)
-
-                        for message, location, date in zip(messages, locations, dates):
-
-                            message = unescape(re.sub("\s+" , " ", re.sub(r'[\t\n\r]', ' ', re.sub('<[^>]*>', '', str(message)))))
-                            location = unescape(re.sub('<[^>]*>', '', str(location)))
-                            if "FILES - TRAVAUX" not in location and "FILES - WERKEN" not in location:
-                                coordinates = geocoder.geocodeData(location, region, language)
-                                item = {
-                                    'region' : region,
-                                    'language' : language,
-                                    'message' : message.split(':')[2],
-                                    'location' : location,
-                                    'source' : message.split(':')[1].replace(" meldt", "").replace(" signale", ""),
-                                    'time' : self.parse_time(region, re.sub('<[^>]*>', '', str(date))),
-                                    'lat' : coordinates['lat'],
-                                    'lng' : coordinates['lng']
-                                }
-
-                                #TODO : dutch ?
-                                if "travaux" in message or "chantier" in message:
-                                    item['category'] = "works"
-                                elif "accident" in message or "incident" in message:
-                                    item['category'] = "events"
-                                else:
-                                    item['category'] = "other"
-                                out_queue.put(item)
-                        out_queue.put(None)
-
-                    except Exception as e:
-                        self.logger.exception(e)
-
-                else:
-                    raise Exception("Wrong region parameter !")
+            else:
+                raise Exception("Wrong region parameter !")
 
         except KeyboardInterrupt as e:
             out_queue.put(None)
