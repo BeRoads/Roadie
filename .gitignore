@@ -1,5 +1,6 @@
-.idea/*
+.*
+!/.gitignore
 *.json
 *.log
-webcams/*
+webcams/
 dashboard/
