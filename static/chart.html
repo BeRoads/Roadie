@@ -1,0 +1,320 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Chart</title>
+    <script type="text/javascript" src="./js/jquery.js"></script>
+    <script type="text/javascript" src="./js/canvasjs.min.js"></script>
+    <script src="./js/Chart.min.js"></script>
+    <script type="text/javascript">
+
+      var url = '/analytics/notification/daily';
+      $.getJSON(url)
+              .done(function(data) {
+
+                  if(data.length>0){
+
+                    var dataSet = [];
+
+                    $.each(data, function(index, value){
+                      dataSet.push({        
+                          type: "line",
+                          showInLegend: true,
+                          lineThickness: 2,
+                          name: "Visits",
+                          markerType: "square",
+                          color: "#F08080",
+                          dataPoints: []
+                        });
+                      $.each(data[index], function(index2, value2){
+                        dataSet[index].name = index2;
+                        $.each(data[index][index2], function(index3, value3){
+                          dataSet[index].dataPoints.push({x : new Date(value3['name'].split('-')[2],
+                            value3['name'].split('-')[1]-1,
+                            value3['name'].split('-')[0]), y : value3['total']});
+                      });
+                      })
+                    });
+                    var chart = new CanvasJS.Chart("notificationChart",
+                      {
+
+                        title:{
+                          text: "Notifications",
+                          fontSize: 30
+                        },
+                        axisX:{
+
+                          gridColor: "Silver",
+                          tickColor: "silver",
+                          valueFormatString: "DD-MM-YYYY"
+
+                        },                        
+                                          toolTip:{
+                                            shared:true
+                                          },
+                        theme: "theme2",
+                        axisY: {
+                          gridColor: "Silver",
+                          tickColor: "silver"
+                        },
+                        legend:{
+                          verticalAlign: "center",
+                          horizontalAlign: "right"
+                        },
+                        data: dataSet
+                      });
+
+                    console.log(dataSet);
+                    chart.render();
+
+                  }else{
+                      $('#notifications_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                              "Not enough data, consider modifying dates parameters</div>");
+                  }
+              })
+              .fail(function(){$('#notifications_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                      "Seems an error occured</div>");});
+
+        var url = '/analytics/hit/all/all/monthly';
+      $.getJSON(url)
+              .done(function(data) {
+                  if(data.length>0){
+                    var dataPoints = [];
+
+                    $.each(data, function(index, value){
+                      console.log(value);
+                      dataPoints.push({x : new Date(value['name'].split('-')[1],
+                            value['name'].split('-')[0]-1), y : value['total']});
+                    });
+                    var chart = new CanvasJS.Chart("hitChart",
+    {
+      theme: "theme2",
+      title:{
+        text: "Hits - per month"
+      },
+      axisX: {
+        valueFormatString: "MMM",
+        interval:1,
+        intervalType: "month"
+        
+      },
+      axisY:{
+        includeZero: false
+        
+      },
+      data: [
+      {        
+        type: "line",
+        //lineThickness: 3,        
+        dataPoints: dataPoints
+      }
+      
+      
+      ]
+    });
+  chart.render();
+
+                  }else{
+                      $('#notifications_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                              "Not enough data, consider modifying dates parameters</div>");
+                  }
+              })
+              .fail(function(){$('#notifications_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                      "Seems an error occured</div>");});
+
+        var url = '/analytics/os/all/all';
+        $.getJSON(url)
+              .done(function(data) {
+                  
+                  if(data.length>0){
+                    
+                    var dataPoints = [];
+                    var total = 0;
+                    $.each(data, function(index, value){
+                      total += value['total'];
+                    });
+
+                    $.each(data, function(index, value){
+                      var percentage = ((value['total']/total)*100).toFixed(2);
+                      if(percentage > 5){
+                        dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                      }
+                      
+                    })
+                    var chart = new CanvasJS.Chart("osChart",
+                    {
+                      title:{
+                        text: "OS"
+                      },          
+                      data: [
+                      {        
+                        type: "doughnut",
+                        startAngle: 60,                          
+                        toolTipContent: "{y} hits",          
+
+                        showInLegend: true,
+                        dataPoints: dataPoints
+                      }
+                      ]
+                    });
+                    chart.render();
+                  }else{
+                      $('#notifications_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                              "Not enough data, consider modifying dates parameters</div>");
+                  }
+              })
+              .fail(function(){$('#notifications_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                      "Seems an error occured</div>");});
+      
+      var url = '/analytics/mobile/all/all';
+        $.getJSON(url)
+              .done(function(data) {
+                  
+                  if(data.length>0){
+                    
+                    var dataPoints = [];
+                    var total = 0;
+                    $.each(data, function(index, value){
+                      total += value['total'];
+                    });
+
+                    $.each(data, function(index, value){
+                      var percentage = ((value['total']/total)*100).toFixed(2);
+                      if(percentage > 5){
+                        dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                      }
+                      
+                    })
+                    var chart = new CanvasJS.Chart("mobileChart",
+                    {
+                      title:{
+                        text: "Mobile"
+                      },          
+                      data: [
+                      {        
+                        type: "doughnut",
+                        startAngle: 60,                          
+                        toolTipContent: "{y} hits",          
+
+                        showInLegend: true,
+                        dataPoints: dataPoints
+                      }
+                      ]
+                    });
+                    chart.render();
+                  }else{
+                      $('#notifications_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                              "Not enough data, consider modifying dates parameters</div>");
+                  }
+              })
+              .fail(function(){$('#notifications_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                      "Seems an error occured</div>");});
+
+          var url = '/analytics/browser/all/all';
+        $.getJSON(url)
+              .done(function(data) {
+                  
+                  if(data.length>0){
+                    
+                    var dataPoints = [];
+                    var total = 0;
+                    $.each(data, function(index, value){
+                      total += value['total'];
+                    });
+
+                    $.each(data, function(index, value){
+                      var percentage = ((value['total']/total)*100).toFixed(2);
+                      if(percentage > 5){
+                        dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                      }
+                      
+                    })
+                    var chart = new CanvasJS.Chart("browserChart",
+                    {
+                      title:{
+                        text: "Browser"
+                      },          
+                      data: [
+                      {        
+                        type: "doughnut",
+                        startAngle: 60,                          
+                        toolTipContent: "{y} hits",          
+
+                        showInLegend: true,
+                        dataPoints: dataPoints
+                      }
+                      ]
+                    });
+                    chart.render();
+                  }else{
+                      $('#notifications_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                              "Not enough data, consider modifying dates parameters</div>");
+                  }
+              })
+              .fail(function(){$('#notifications_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                      "Seems an error occured</div>");});
+
+          var url = '/analytics/language/IWay/TrafficEvent';
+        $.getJSON(url)
+              .done(function(data) {
+                  
+                  if(data.length>0){
+                    
+                    var dataPoints = [];
+                    var total = 0;
+                    $.each(data, function(index, value){
+                      total += value['total'];
+                    });
+
+                    $.each(data, function(index, value){
+                      var percentage = ((value['total']/total)*100).toFixed(2);
+                      dataPoints.push({ y : value['total'], label : value['name'] + " " + percentage + " %", legendText : value['name']});
+                      
+                      
+                    })
+                    var chart = new CanvasJS.Chart("languageChart",
+                    {
+                      title:{
+                        text: "Language"
+                      },          
+                      data: [
+                      {        
+                        type: "doughnut",
+                        startAngle: 60,                          
+                        toolTipContent: "{y} hits",          
+
+                        showInLegend: true,
+                        dataPoints: dataPoints
+                      }
+                      ]
+                    });
+                    chart.render();
+                  }else{
+                      $('#notifications_line').html("<div class='alert'><strong>Empty ! </strong>" +
+                              "Not enough data, consider modifying dates parameters</div>");
+                  }
+              })
+              .fail(function(){$('#notifications_line').html("<div class='alert alert-error'><strong>Oops! </strong>" +
+                      "Seems an error occured</div>");});
+
+
+
+
+
+    </script>
+  </head>
+  <body>
+
+    <div id="notificationChart" style="height: 300px; width: 50%;"></div>
+    <div id="hitChart" style="height: 300px; width: 50%;"></div>
+    <div id="osChart" style="height: 300px; width: 100%;"></div>
+    <div id="mobileChart" style="height: 300px; width: 100%;">
+    </div>
+    <div id="browserChart" style="height: 300px; width: 100%;">
+    </div>
+    <div id="languageChart" style="height: 300px; width: 100%;">
+    </div>
+
+  </body>
+</html>
+<!-- always remember that github loves you dearly -->
