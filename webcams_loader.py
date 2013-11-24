@@ -74,7 +74,7 @@ class WebcamsLoader:
         con = None
         cursor = None
         try:
-            con = MySQLdb.connect('localhost', 'root', 'my8na6xe', 'beroads', charset='utf8')
+            con = MySQLdb.connect('localhost', 'root', 'cC6GRfysDHyLPH', 'beroads', charset='utf8')
             cursor = con.cursor()
             again = True
             while again:
