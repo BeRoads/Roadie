@@ -1,5 +1,5 @@
 .idea/workspace.xml
 *.json
 *.log
-webcams/
-dashboard/
+webcams/*
+dashboard/*
