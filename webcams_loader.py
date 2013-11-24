@@ -126,7 +126,7 @@ class WebcamsLoader:
             @return true if the image is available, false if not
         """
         samples_url = ['webcams/samples/blue.jpg', 'webcams/samples/black.jpg',
-                       'webcams/samples/unavailable.jpg']
+                       'webcams/samples/unavailable.jpg', 'webcams/samples/videojet.jpg']
 
         try :
             for sample in samples_url:
@@ -135,7 +135,7 @@ class WebcamsLoader:
                     c1 = f1.read()
                     c2 = f2.read()
                     similarity = float(sum([a==b for a,b in zip(c1,c2)]))/len(c1)
-                    if similarity == 1:
+                    if similarity > 0.8:
                         return False
             return True
 
