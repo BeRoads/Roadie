@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+__author__ = 'quentinkaiser'
 import memcache
 import sys
 import apns
@@ -25,6 +26,7 @@ import uuid
 
 from gcm import *
 from apnsclient import *
+import configparser
 
 def require_basic_auth(handler_class):
     # Should return the new _execute function, one which enforces
@@ -77,6 +79,7 @@ def require_basic_auth(handler_class):
 
 PRECISION = 10
 R = 6367
+
 def haversine(a, b):
     """
     Calculate the great circle distance between two points
@@ -92,6 +95,7 @@ def haversine(a, b):
     km = R * c
     return km
 
+
 def to_cartesian(latitude, longitude):
     """
 
@@ -99,7 +103,8 @@ def to_cartesian(latitude, longitude):
     x = R * cos(latitude) * cos(longitude)
     y = R * cos(latitude) * sin(longitude)
     z = R * sin(latitude)
-    return {'x' : x, 'y' :  y, 'z' : z}
+    return {'x': x, 'y': y, 'z': z}
+
 
 def from_cartesian(a):
     """
@@ -107,7 +112,8 @@ def from_cartesian(a):
     """
     latitude = asin(a['z'] / R)
     longitude = atan2(a['y'], a['x'])
-    return {'latitude' : latitude, 'longitude' : longitude}
+    return {'latitude': latitude, 'longitude': longitude}
+
 
 def nearest_point_great_circle(a, b, c):
     """
@@ -123,42 +129,29 @@ def nearest_point_great_circle(a, b, c):
     t *= R
     return from_cartesian(t)
 
+
 def on_segment(a, b, t):
     """
 
     """
-    return abs(haversine(a,b) - haversine(a,t) - haversine(b, t)) < PRECISION
+    return abs(haversine(a, b) - haversine(a, t) - haversine(b, t)) < PRECISION
+
 
 def nearest_point_segment(a, b, c):
     """
 
     """
-    t = nearest_point_great_circle(a,b,c)
-    if on_segment(a,b,t):
+    t = nearest_point_great_circle(a, b, c)
+    if on_segment(a, b, t):
         return t
-    return a if haversine(a,c) < haversine(b,c) else c
+    return a if haversine(a, c) < haversine(b, c) else c
 
 
-logging.basicConfig(filename='beroads.log', level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-define("mysql_host", default="localhost", help="database host")
-define("mysql_database", default="beroads", help="database name")
-define("mysql_user", default="root", help="database user")
-define("mysql_password", default="cC6GRfysDHyLPH", help="database password")
-define("package_query", default="SELECT * FROM package WHERE package_name = %s",
-    help="database request to get package by package name")
-define("max_subscribers", default=0, help="")
-define("webcams_directory", default="/var/www/vhosts/beroads/public_html/dashboard/webcams/", help="")
-define("webcams_fetch_frequency", default=900000, help="")
-define("traffic_fetch_frequency", default=900000, help="")
-define("apns_certificate", "beroads.cert")
-define("apns_key", "beroads.key")
-define("gcm_api_key", "AIzaSyC_UN1QUzNZLsyWzCbL2HIDglgN92b5FxY")
-define("apns_sandbox_mode", False)
 
 class Application(tornado.web.Application):
-    def __init__(self):
+    def __init__(self, config):
+
+
         settings = dict(
             cookie_secret="5725af95ef74805b753cd3689bb3393681e02ce6",
             static_path="static",
@@ -181,29 +174,49 @@ class Application(tornado.web.Application):
             (r"/analytics/hit/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsHitHandler),
             (r"/analytics/notification/([0-9a-zA-Z_\-]+)", AnalyticsNotificationsHandler),
             (r"/analytics/coordinates/([0-9a-zA-Z_\-]+)/([0-9a-zA-Z_\-]+)", AnalyticsCoordinateHandler),
-            (r"/analytics/logs", TailSocketHandler),
             (r"/deployment/([0-9a-zA-Z_\-]+)", DeploymentHandler)
         ]
 
         tornado.web.Application.__init__(self, handlers, **settings)
 
+        self.config = config
+        logging.basicConfig(
+            filename='%s.log'%(self.config['server']['log_filename']),
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
         self.last_insert_time = int(time.time())
-        self.gcm = GCM(options.gcm_api_key)
-        certificate = Certificate(cert_file=options.apns_certificate, key_file=options.apns_key, passphrase="lio")
+        self.gcm = GCM(self.config['push']['gcm_api_key'])
+        certificate = Certificate(
+            cert_file=self.config['push']['apns_certificate'],
+            key_file=self.config['push']['apns_key'],
+            passphrase=str(self.config['push']['apns_passphrase'])
+        )
         session = Session()
         con = session.get_connection("push_production", certificate=certificate)
         self.apns = APNs(con)
         # Have one global connection to the TDT DB across all handlers
         self.db = torndb.Connection(
-            host="localhost", database=options.mysql_database,
-            user=options.mysql_user, password=options.mysql_password)
-        self.cache = memcache.Client(['127.0.0.1:11211'], debug=True)
+            host=self.config['mysql']['host'],
+            database=self.config['mysql']['database'],
+            user=self.config['mysql']['username'],
+            password=self.config['mysql']['password']
+        )
+
+        self.cache = memcache.Client(
+            ['%s:%d' % (
+                self.config['memcached']['ip'],
+                int(self.config['memcached']['port'])
+                )],
+            debug=True
+        )
 
         for contype in ['apns', 'gcm', 'web']:
-            for language in ['fr','nl', 'de', 'en']:
-                subscribers = self.cache.get(str('subscribers.%s.%s'%(contype, language)))
+            for language in ['fr', 'nl', 'de', 'en']:
+                subscribers = self.cache.get(str('subscribers.%s.%s' % (contype, language)))
                 if subscribers is None:
-                    self.cache.set(str('subscribers.%s.%s'%(contype, language)), [])
+                    self.cache.set(str('subscribers.%s.%s' % (contype, language)), [])
 
 
     def log_notification(self, notif):
@@ -211,7 +224,7 @@ class Application(tornado.web.Application):
             Logs a notification into our mysql database
         """
         self.db.execute("INSERT INTO notification_logs (uuid, type, size, time) VALUES "
-                        "(\"%s\", \"%s\", %d, %d)"%
+                        "(\"%s\", \"%s\", %d, %d)" %
                         (notif['uuid'], notif['type'], notif['size'], notif['time']))
         return
 
@@ -219,7 +232,7 @@ class Application(tornado.web.Application):
     def traffic_differ(self, language, callback):
         #traffic differ with mysql stored events (md5 hash)
         try:
-            rows = self.db.query("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d"%
+            rows = self.db.query("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d" %
                                  (language, self.last_insert_time))
             callback(rows)
         except Exception as e:
@@ -234,10 +247,10 @@ class Application(tornado.web.Application):
         logger = logging.getLogger("notification pusher")
         logger.info("Notifying subscribers from channel %s" % language)
 
-        for subscriber in self.cache.get(str('subscribers.web.%s'%language)):
+        for subscriber in self.cache.get(str('subscribers.web.%s' % language)):
             for event in events:
                 distance = int(haversine(subscriber.coords,
-                        {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
+                        {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
                 if distance < int(subscriber.area):
                     event['distance'] = distance
                     #PUBLISH
@@ -247,13 +260,13 @@ class Application(tornado.web.Application):
                         "data": event
                     }
                     logger.info("Sending update to subscriber %s" % subscriber.uuid)
-                    notif = {"uuid" : subscriber.uuid, "type" : "web", "size" : len(str(event)), "time" : int(time.time())}
+                    notif = {"uuid": subscriber.uuid, "type": "web", "size": len(str(event)), "time": int(time.time())}
                     subscriber.write_message(tornado.escape.json_encode(message))
                     self.log_notification(notif)
 
 
         # Google Cloud Service
-        subscribers = self.cache.get(str('subscribers.gcm.%s'%language))
+        subscribers = self.cache.get(str('subscribers.gcm.%s' % language))
         for subscriber in subscribers:
             for event in events:
                 distance = sys.maxint
@@ -268,8 +281,9 @@ class Application(tornado.web.Application):
                         distance = haversine(x, subscriber['coords']) < subscriber['area']
 
                 else:
-                    distance = int(haversine({'latitude' : subscriber['coords']['lat'], 'longitude' : subscriber['coords']['lng']},
-                            {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
+                    distance = int(
+                        haversine({'latitude': subscriber['coords']['lat'], 'longitude': subscriber['coords']['lng']},
+                                {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
 
                 if distance < int(subscriber['area']):
                     event['distance'] = distance
@@ -284,29 +298,29 @@ class Application(tornado.web.Application):
                             # Check for errors and act accordingly
                             if error is 'NotRegistered':
                                 # Remove reg_ids from database
-                                logger.error("Device %s not registered, removing from channel %s"%
+                                logger.error("Device %s not registered, removing from channel %s" %
                                              (subscriber["registration_id"], language))
                                 subscribers.delete(subscriber)
-                                self.cache.set(str('subscribers.gcm.%s'%language), subscribers)
+                                self.cache.set(str('subscribers.gcm.%s' % language), subscribers)
                     if 'canonical' in response:
                         for reg_id, canonical_id in response['canonical'].items():
                             # Repace reg_id with canonical_id in your database
                             subscriber['registration_id'] = canonical_id
                     notif = {
-                        "uuid" : subscriber['registration_id'],
-                        "type" : "gcm",
-                        "size" : len(str(event)),
-                        "time" : int(time.time())
+                        "uuid": subscriber['registration_id'],
+                        "type": "gcm",
+                        "size": len(str(event)),
+                        "time": int(time.time())
                     }
                     self.log_notification(notif)
 
 
         # Apple APNS
-        subscribers = self.cache.get(str('subscribers.apns.%s'%language))
+        subscribers = self.cache.get(str('subscribers.apns.%s' % language))
         for subscriber in subscribers:
             for event in events:
                 distance = int(haversine(subscriber['coords'],
-                        {'latitude' : float(event['lat']), 'longitude' : float(event['lng'])}))
+                        {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
                 if distance < 10:
                     event['distance'] = distance
 
@@ -318,7 +332,7 @@ class Application(tornado.web.Application):
                         code, errmsg = reason
                         logger.error("Device faled: {0}, reason: {1}".format(token, errmsg))
                         subscribers.remove(subscriber)
-                        self.cache.set(str('subscribers.apns.%s'%language), subscribers)
+                        self.cache.set(str('subscribers.apns.%s' % language), subscribers)
 
                     # Check failures not related to devices.
                     for code, errmsg in res.errors:
@@ -329,13 +343,12 @@ class Application(tornado.web.Application):
                         # repeat with retry_message or reschedule your task
                         retry_message = res.retry()
 
-
                     logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
                     notif = {
-                        "uuid" : subscriber['device_token'],
-                        "type" : "apns",
-                        "size" : len(str(message)),
-                        "time" : int(time.time())
+                        "uuid": subscriber['device_token'],
+                        "type": "apns",
+                        "size": len(str(message)),
+                        "time": int(time.time())
                     }
                     self.log_notification(notif)
 
@@ -348,14 +361,13 @@ class Application(tornado.web.Application):
         """
         logger = logging.getLogger("APNS feedback")
         for token, when in self.apns.feedback():
-
-            logger.info("Device token %s unavailable since %s"%(token_hex, str(when)))
+            logger.info("Device token %s unavailable since %s" % (token_hex, str(when)))
             for language in ['fr', 'nl', 'de', 'en']:
-                subscribers = self.cache.get(str('subscribers.apns.%s'%language))
+                subscribers = self.cache.get(str('subscribers.apns.%s' % language))
                 for subscriber in subscribers:
                     if subscriber['device_token'] == token:
                         subscribers.remove(subscriber)
-                        self.cache.set(str('subscribers.apns.%s'%language), subscribers)
+                        self.cache.set(str('subscribers.apns.%s' % language), subscribers)
 
     @tornado.gen.engine
     def load_traffic(self):
@@ -366,9 +378,9 @@ class Application(tornado.web.Application):
         try:
             languages = ['nl', 'fr', 'de', 'en']
             for language in languages:
-                logger.info("Fetching %s traffic ..."%language)
+                logger.info("Fetching %s traffic ..." % language)
                 new_events = yield tornado.gen.Task(self.traffic_differ, language)
-                logger.info("Got %d new events"%len(new_events))
+                logger.info("Got %d new events" % len(new_events))
                 if new_events is not None:
                     published = yield tornado.gen.Task(self.notify_subscribers, language, new_events)
             self.last_insert_time = int(time.time())
@@ -396,16 +408,16 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(tornado.escape.json_encode(ack))
 
     def on_close(self):
-        subscribers = self.cache.get(str('subscribers.web.%s'%self.language))
+        subscribers = self.cache.get(str('subscribers.web.%s' % self.language))
         subscribers.remove(self)
-        self.cache.set(str('subscribers.web.%s'%self.language), subscribers)
+        self.cache.set(str('subscribers.web.%s' % self.language), subscribers)
 
     @classmethod
     def publish(cls, channel, message):
         """
             Publish message to all subscribers on channel.
         """
-        subscribers = cls.cache.get('subscribers.web.%s'%channel)
+        subscribers = cls.cache.get('subscribers.web.%s' % channel)
         for subscriber in subscribers:
             subscriber.write_message(tornado.escape.json_encode(message))
 
@@ -472,9 +484,9 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                 self.coords = parsed['coords']
                 self.area = parsed["area"]
 
-                subscribers = self.cache.get(str('subscribers.web.%s'%language))
+                subscribers = self.cache.get(str('subscribers.web.%s' % language))
                 subscribers.append(self)
-                self.cache.set(str('subscribers.web.%s'%language), subscribers)
+                self.cache.set(str('subscribers.web.%s' % language), subscribers)
 
                 ack = {
                     "uuid": self.uuid,
@@ -527,53 +539,6 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
             }
             self.ws_connection.write_message(tornado.escape.json_encode(message))
 
-tailed_file = open('beroads.log')
-tailed_file.seek(os.path.getsize('beroads.log'))
-
-class TailSocketHandler(tornado.websocket.WebSocketHandler):
-    """
-        Websocket handler that register a tailed file and send new line to the connected clients.
-    """
-    ws_connections = []
-
-
-    def allow_draft76(self):
-        """
-
-        """
-        # for iOS 5.0 Safari
-        return True
-
-    def open(self):
-        """
-
-        """
-        self.ws_connections.append(self.ws_connection)
-
-    def on_close(self):
-        """
-
-        """
-        self.ws_connections.remove(self.ws_connection)
-
-    @classmethod
-    def check_file(cls):
-        """
-
-        """
-        where = tailed_file.tell()
-        line = tailed_file.readline()
-        if not line:
-            tailed_file.seek(where)
-        else:
-            subscriber=None
-            try:
-                for subscriber in cls.ws_connections:
-                    subscriber.write_message(line)
-            except StreamClosedError:
-                if subscriber:
-                    cls.ws_connections.remove(subscriber)
-
 
 class BaseHandler(tornado.web.RequestHandler):
     @property
@@ -615,7 +580,6 @@ class BaseHandler(tornado.web.RequestHandler):
 
 
 class GoogleCloudMessagingHandler(BaseHandler):
-
     logger = logging.getLogger("GCM handler")
 
     def post(self, *args, **kwargs):
@@ -653,7 +617,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
                     raise ValueError("longitude is not valid")
 
             present = False
-            subscribers = self.cache.get(str('subscribers.gcm.%s'%data['language']))
+            subscribers = self.cache.get(str('subscribers.gcm.%s' % data['language']))
             for subscriber in subscribers:
                 if subscriber['registration_id'] == data['registration_id']:
                     subscriber = data
@@ -662,7 +626,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
             if not present:
                 data['timestamp'] = time.time()
                 subscribers.append(data)
-                self.cache.set(str('subscribers.gcm.%s'%data['language']), subscribers)
+                self.cache.set(str('subscribers.gcm.%s' % data['language']), subscribers)
 
             self.set_status(200)
 
@@ -685,7 +649,7 @@ class AppleSendNotificationHandler(BaseHandler):
             except PayloadTooLargeError as e:
                 #if the payload is too large, we chomp the alert content
                 logging.exception(e)
-                json_overhead_bytes = len(payload.json())-1
+                json_overhead_bytes = len(payload.json()) - 1
                 payload = Payload(alert=message[:(MAX_PAYLOAD_LENGTH - json_overhead_bytes)],
                     sound="default", badge=5)
 
@@ -694,15 +658,15 @@ class AppleSendNotificationHandler(BaseHandler):
         else:
             self.send_error(404)
 
-class WebsocketSendNotificationHandler(BaseHandler):
 
+class WebsocketSendNotificationHandler(BaseHandler):
     def get(self, *args, **kwargs):
         """
 
         """
         if self.get_argument("uuid") is not None and self.get_argument("message") is not None:
             for language in ['fr', 'nl', 'de', 'en']:
-                subscriber = self.cache.get(str('subscribers.web.%s'%language))
+                subscriber = self.cache.get(str('subscribers.web.%s' % language))
                 for subscriber in subscribers:
                     if subscriber.uuid == self.get_argument("uuid"):
                         message = {
@@ -716,7 +680,6 @@ class WebsocketSendNotificationHandler(BaseHandler):
 
 
 class ApplePushNotificationServerHandler(BaseHandler):
-
     logger = logging.getLogger("APNS handler")
     SUPPORTED_METHODS = ("POST")
 
@@ -728,14 +691,14 @@ class ApplePushNotificationServerHandler(BaseHandler):
         con = Session.new_connection("feedback_production", cert_string=db_certificate)
         service = APNs(con, tail_timeout=10)
         for token, when in service.feedback():
-            cls.logger.info("Removing token %s"%token)
+            cls.logger.info("Removing token %s" % token)
             for language in ['fr', 'nl', 'de', 'en']:
-                subscribers = cls.cache.get(str('subscribers.apns.%s'%language))
+                subscribers = cls.cache.get(str('subscribers.apns.%s' % language))
                 for subscriber in subscribers:
                     if subscriber['device_token'] == token:
                         subscribers.remove(subscriber)
 
-        cls.cache.set('subscribers.apns.%s'%language, subscribers)
+        cls.cache.set('subscribers.apns.%s' % language, subscribers)
 
     def post(self, *args, **kwargs):
         """
@@ -776,7 +739,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
                     data['coords']['longitude'] = float(data['coords']['longitude'])
 
             present = False
-            subscribers = self.cache.get(str('subscribers.apns.%s'%data['language']))
+            subscribers = self.cache.get(str('subscribers.apns.%s' % data['language']))
             for subscriber in subscribers:
                 if subscriber['device_token'] == data['device_token']:
                     subscriber = data
@@ -786,7 +749,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
                 data['timestamp'] = time.time()
                 subscribers.append(data)
 
-            self.cache.set(str('subscribers.apns.%s'%data['language']), subscribers)
+            self.cache.set(str('subscribers.apns.%s' % data['language']), subscribers)
             self.set_status(200)
 
         except Exception as e:
@@ -836,7 +799,6 @@ class DeploymentHandler(BaseHandler):
 
 @require_basic_auth
 class DashboardHandler(BaseHandler):
-
     #for monitoring purpose
     def head(self, basicauth_user, basicauth_pass):
         if self.auth(basicauth_user, basicauth_pass):
@@ -892,8 +854,8 @@ class DashboardHandler(BaseHandler):
 
             events_count = []
             for language in ['fr', 'nl', 'de', 'en']:
-                events_count.append(len(self.db.query("SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE"%(language))))
-
+                events_count.append(len(self.db.query(
+                    "SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE" % (language))))
 
             google_subscribers = dict(
                 fr=self.cache.get('subscribers.gcm.fr'),
@@ -917,15 +879,17 @@ class DashboardHandler(BaseHandler):
             apple_total = sum(len(v) for v in apple_subscribers.itervalues())
             self.render("templates/index.html", username=basicauth_user, sources=sources,
                 traffic_feed_channels=['fr', 'nl', 'de', 'en'], google_subscribers=google_subscribers,
-                events_count=events_count, apple_subscribers=apple_subscribers, apple_total = apple_total, web_subscribers=web_subscribers,
+                events_count=events_count, apple_subscribers=apple_subscribers, apple_total=apple_total,
+                web_subscribers=web_subscribers,
                 packages=packages)
         else:
             self.send_error(403)
 
+
 @require_basic_auth
 class AnalyticsSubscribersHandler(BaseHandler):
-
     subscribers_types = ['web', 'apple', 'google']
+
     @tornado.web.asynchronous
     @tornado.gen.engine
     def get(self, subscriber_type, basicauth_user, basicauth_pass):
@@ -967,6 +931,7 @@ class AnalyticsSubscribersHandler(BaseHandler):
         else:
             self.write_error(403)
 
+
 @require_basic_auth
 class AnalyticsOSHandler(BaseHandler):
     @tornado.web.asynchronous
@@ -980,7 +945,7 @@ class AnalyticsOSHandler(BaseHandler):
             start_date = self.get_argument('start_date', 0)
             end_date = self.get_argument('end_date', time.time())
 
-            package_present = self.db.query(options.package_query, str(package))
+            package_present = self.db.query("SELECT * FROM package WHERE package_name = %s", str(package))
             resource_present = self.db.query("SELECT * FROM resource WHERE resource_name = %s", str(resource))
 
             if (package == 'all' or package_present) and (resource == 'all' or resource_present):
@@ -1072,7 +1037,6 @@ class AnalyticsBrowserHandler(BaseHandler):
         data = []
         try:
             for row in rows:
-
                 data.append({
                     'name': row['browser'] if row['browser'] is not None else "other",
                     'total': int(row['total'])
@@ -1197,7 +1161,7 @@ class AnalyticsHitHandler(BaseHandler):
 
 
     def parse_hits(self, package, resource, start_date, end_date, frequency, callback):
-        d = {'hourly' : 'hour', 'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
+        d = {'hourly': 'hour', 'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
 
         rows = self.db.query("""
                         SELECT
@@ -1230,6 +1194,7 @@ class AnalyticsHitHandler(BaseHandler):
             callback(data)
         return
 
+
 @require_basic_auth
 class AnalyticsNotificationsHandler(BaseHandler):
     """
@@ -1256,7 +1221,7 @@ class AnalyticsNotificationsHandler(BaseHandler):
 
 
     def parse_notifications(self, start_date, end_date, frequency, callback):
-        d = {'hourly' :'hour', 'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
+        d = {'hourly': 'hour', 'daily': 'day', 'weekly': 'week', 'monthly': 'month', 'yearly': 'year'}
 
         rows = self.db.query("""
                         SELECT
@@ -1287,6 +1252,7 @@ class AnalyticsNotificationsHandler(BaseHandler):
             logging.error(e)
             callback(data)
         return
+
 
 @require_basic_auth
 class AnalyticsLanguageHandler(BaseHandler):
@@ -1409,26 +1375,30 @@ if __name__ == "__main__":
 
     try:
         parser = OptionParser()
-        parser.add_option("-p", "--port", type="int", default=8080, help="listening port")
-        parser.add_option("-t", "--time", type="int", default=900000, help="sleep time between trafic refresh")
-        (values, args) = parser.parse_args()
+        parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
+        (options, args) = parser.parse_args()
 
-        app = Application()
+        config = configparser.ConfigParser()
+        config.read(options.config)
 
-        app.listen(values.port)
-        logging.info("BeRoads webserver listening on %s" % (values.port))
+        app = Application(config)
+
+        app.listen(int(config['server']['port']))
+        logging.info("BeRoads webserver listening on %s" % (config['server']['port']))
         main_loop = tornado.ioloop.IOLoop.instance()
 
         #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
         #websockets subscribers.
-        tornado.ioloop.PeriodicCallback(app.load_traffic, values.time, io_loop=main_loop).start()
+        tornado.ioloop.PeriodicCallback(
+            app.load_traffic,
+            int(config['server']['update_time'])*1000,
+            io_loop=main_loop
+        ).start()
 
-        #start a periodic callback to tail our log file and send new line to websocket client
-        tailed_callback = tornado.ioloop.PeriodicCallback(TailSocketHandler.check_file, 500)
-        tailed_callback.start()
-
-        feedback_callback = tornado.ioloop.PeriodicCallback(app.feedback, values.time)
-        feedback_callback.start()
+        feedback_callback = tornado.ioloop.PeriodicCallback(
+            app.feedback,
+            int(config['server']['update_time'])*1000
+        ).start()
 
         main_loop.start()
     except KeyboardInterrupt as e:
