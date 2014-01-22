@@ -587,6 +587,8 @@ class TrafficLoader:
                             'time': self.parse_time(region, item.pubdate.string),
                             'message': item.description.string,
                             'location': item.title.string
+                            'lat' : 0,
+                            'lng' : 0
                             }
 
                         evt = item.guid.string.replace('http://trafiroutes.wallonie.be/trafiroutes/maptempsreel/?v=EVT',
@@ -755,7 +757,7 @@ class TrafficLoader:
 
 if __name__ == "__main__":
     parser = OptionParser()
-    parser.add_option("-c", "--config", type="string", default="%s/config.ini"%os.path.dirname(__file__), help="configuration file")
+    parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
     (options, args) = parser.parse_args()
 
     config = configparser.ConfigParser()
