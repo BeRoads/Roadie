@@ -8,6 +8,7 @@ import datetime
 import calendar
 import configparser
 from PIL import Image
+import StringIO
 
 
 class WebcamsLoader:
@@ -179,6 +180,10 @@ class WebcamsLoader:
                     return False
 
             im = Image.open(item['output_url'])
+            try:
+                im.load()
+            except IOError:     #this happens when we receive truncated images
+                return True
             R, G, B = im.convert('RGB').split()
             r = R.load()
             g = G.load()
@@ -192,11 +197,10 @@ class WebcamsLoader:
                         black +=1
             if black > 50000:
                 return False
-
         except Exception as e:
             self.logger.exception(e)
-
-        return True
+        finally:
+            return True
 
     def scrap_webcams(self, webcams_urls_queue):
         try:
