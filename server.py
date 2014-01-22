@@ -330,7 +330,7 @@ class Application(tornado.web.Application):
                     # Check failures. Check codes in APNs reference docs.
                     for token, reason in res.failed.items():
                         code, errmsg = reason
-                        logger.error("Device faled: {0}, reason: {1}".format(token, errmsg))
+                        logger.error("Device failed: {0}, reason: {1}".format(token, errmsg))
                         subscribers.remove(subscriber)
                         self.cache.set(str('subscribers.apns.%s' % language), subscribers)
 
