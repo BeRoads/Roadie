@@ -154,7 +154,7 @@ class Application(tornado.web.Application):
 
         settings = dict(
             cookie_secret="5725af95ef74805b753cd3689bb3393681e02ce6",
-            static_path="static",
+            static_path="%s/static"%os.path.dirname(__file__),
             xsrf_cookies=False,
         )
 
@@ -180,17 +180,12 @@ class Application(tornado.web.Application):
         tornado.web.Application.__init__(self, handlers, **settings)
 
         self.config = config
-        logging.basicConfig(
-            filename='%s.log'%(self.config['server']['log_filename']),
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-
+        
         self.last_insert_time = int(time.time())
         self.gcm = GCM(self.config['push']['gcm_api_key'])
         certificate = Certificate(
-            cert_file=self.config['push']['apns_certificate'],
-            key_file=self.config['push']['apns_key'],
+            cert_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
+            key_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
             passphrase=str(self.config['push']['apns_passphrase'])
         )
         session = Session()
@@ -203,6 +198,25 @@ class Application(tornado.web.Application):
             user=self.config['mysql']['username'],
             password=self.config['mysql']['password']
         )
+
+	#set a custom formatter
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        self.logger = logging.getLogger("webcams")
+        self.logger.setLevel(logging.INFO)
+
+        default_file = logging.FileHandler("%s-default.log" % (str(self.config['server']['log_filename'])), delay=True)
+        default_file.setLevel(logging.INFO)
+        default_file.setFormatter(formatter)
+        self.logger.addHandler(default_file)
+        default_file.close()
+
+        error_file = logging.FileHandler("%s-error.log" % (str(self.config['server']['log_filename'])), delay=True)
+        error_file.setLevel(logging.ERROR)
+        error_file.setFormatter(formatter)
+        self.logger.addHandler(error_file)
+        error_file.close()
+
+
 
         self.cache = memcache.Client(
             ['%s:%d' % (
@@ -244,8 +258,7 @@ class Application(tornado.web.Application):
     def notify_subscribers(self, language, events, callback):
         """
         """
-        logger = logging.getLogger("notification pusher")
-        logger.info("Notifying subscribers from channel %s" % language)
+        self.logger.info("Notifying subscribers from channel %s" % language)
 
         for subscriber in self.cache.get(str('subscribers.web.%s' % language)):
             for event in events:
@@ -259,7 +272,7 @@ class Application(tornado.web.Application):
                         "code": 3,
                         "data": event
                     }
-                    logger.info("Sending update to subscriber %s" % subscriber.uuid)
+                    self.logger.info("Sending update to subscriber %s" % subscriber.uuid)
                     notif = {"uuid": subscriber.uuid, "type": "web", "size": len(str(event)), "time": int(time.time())}
                     subscriber.write_message(tornado.escape.json_encode(message))
                     self.log_notification(notif)
@@ -291,14 +304,14 @@ class Application(tornado.web.Application):
                         registration_ids=[subscriber['registration_id']], data=event,
                         collapse_key='beroads', delay_while_idle=True, time_to_live=3600
                     )
-                    logger.info("Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
+                    self.logger.info("Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
                     # Handling errors
                     if 'errors' in response:
                         for error, reg_ids in response['errors'].items():
                             # Check for errors and act accordingly
                             if error is 'NotRegistered':
                                 # Remove reg_ids from database
-                                logger.error("Device %s not registered, removing from channel %s" %
+                                self.logger.error("Device %s not registered, removing from channel %s" %
                                              (subscriber["registration_id"], language))
                                 subscribers.delete(subscriber)
                                 self.cache.set(str('subscribers.gcm.%s' % language), subscribers)
@@ -330,20 +343,20 @@ class Application(tornado.web.Application):
                     # Check failures. Check codes in APNs reference docs.
                     for token, reason in res.failed.items():
                         code, errmsg = reason
-                        logger.error("Device faled: {0}, reason: {1}".format(token, errmsg))
+                        self.logger.error("Device faled: {0}, reason: {1}".format(token, errmsg))
                         subscribers.remove(subscriber)
                         self.cache.set(str('subscribers.apns.%s' % language), subscribers)
 
                     # Check failures not related to devices.
                     for code, errmsg in res.errors:
-                        logger.error(errmsg)
+                        self.logger.error(errmsg)
 
                     # Check if there are tokens that can be retried
                     if res.needs_retry():
                         # repeat with retry_message or reschedule your task
                         retry_message = res.retry()
 
-                    logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
+                    self.logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
                     notif = {
                         "uuid": subscriber['device_token'],
                         "type": "apns",
@@ -359,9 +372,8 @@ class Application(tornado.web.Application):
         """
 
         """
-        logger = logging.getLogger("APNS feedback")
         for token, when in self.apns.feedback():
-            logger.info("Device token %s unavailable since %s" % (token_hex, str(when)))
+            self.logger.info("Device token %s unavailable since %s" % (token_hex, str(when)))
             for language in ['fr', 'nl', 'de', 'en']:
                 subscribers = self.cache.get(str('subscribers.apns.%s' % language))
                 for subscriber in subscribers:
@@ -374,25 +386,23 @@ class Application(tornado.web.Application):
         """
 
         """
-        logger = logging.getLogger("traffic loader")
         try:
             languages = ['nl', 'fr', 'de', 'en']
             for language in languages:
-                logger.info("Fetching %s traffic ..." % language)
+                self.logger.info("Fetching %s traffic ..." % language)
                 new_events = yield tornado.gen.Task(self.traffic_differ, language)
-                logger.info("Got %d new events" % len(new_events))
+                self.logger.info("Got %d new events" % len(new_events))
                 if new_events is not None:
                     published = yield tornado.gen.Task(self.notify_subscribers, language, new_events)
             self.last_insert_time = int(time.time())
         except Exception as e:
-            logger.exception(e)
+            self.logger.exception(e)
 
 
 class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
     """
 
     """
-    logger = logging.getLogger("websocket handler")
 
     def allow_draft76(self):
         # for iOS 5.0 Safari
@@ -549,6 +559,11 @@ class BaseHandler(tornado.web.RequestHandler):
         return self.application.db
 
     @property
+    def logger(self):
+        """
+        """
+	return self.application.logger
+    @property
     def gcm(self):
         """
 
@@ -580,7 +595,6 @@ class BaseHandler(tornado.web.RequestHandler):
 
 
 class GoogleCloudMessagingHandler(BaseHandler):
-    logger = logging.getLogger("GCM handler")
 
     def post(self, *args, **kwargs):
         """
@@ -680,7 +694,6 @@ class WebsocketSendNotificationHandler(BaseHandler):
 
 
 class ApplePushNotificationServerHandler(BaseHandler):
-    logger = logging.getLogger("APNS handler")
     SUPPORTED_METHODS = ("POST")
 
     @classmethod
@@ -1375,7 +1388,7 @@ if __name__ == "__main__":
 
     try:
         parser = OptionParser()
-        parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
+        parser.add_option("-c", "--config", type="string", default="%s/config.ini"%os.path.dirname(__file__), help="configuration file")
         (options, args) = parser.parse_args()
 
         config = configparser.ConfigParser()
