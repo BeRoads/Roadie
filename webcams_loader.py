@@ -180,6 +180,10 @@ class WebcamsLoader:
                     return False
 
             im = Image.open(item['output_url'])
+            try:
+                im.load()
+            except IOError:     #this happens when we receive truncated images
+                return True
             R, G, B = im.convert('RGB').split()
             r = R.load()
             g = G.load()
@@ -195,8 +199,6 @@ class WebcamsLoader:
                 return False
         except Exception as e:
             self.logger.exception(e)
-        finally:
-            return True
 
     def scrap_webcams(self, webcams_urls_queue):
         try:
