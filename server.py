@@ -29,44 +29,24 @@ from apnsclient import *
 import configparser
 
 def require_basic_auth(handler_class):
-    # Should return the new _execute function, one which enforces
-    # authentication and only calls the inner handler's _execute() if
-    # it's present.
+
     def wrap_execute(handler_execute):
-        # I've pulled this out just for clarity, but you could stick
-        # it in _execute if you wanted.  It returns True iff
-        # credentials were provided.  (The end of this function might
-        # be a good place to see if you like their username and
-        # password.)
+
         def require_basic_auth(handler, kwargs):
             auth_header = handler.request.headers.get('Authorization')
             if auth_header is None or not auth_header.startswith('Basic '):
-                # If the browser didn't send us authorization headers,
-                # send back a response letting it know that we'd like
-                # a username and password (the "Basic" authentication
-                # method).  Without this, even if you visit put a
-                # username and password in the URL, the browser won't
-                # send it.  The "realm" option in the header is the
-                # name that appears in the dialog that pops up in your
-                # browser.
+
                 handler.set_status(401)
                 handler.set_header('WWW-Authenticate', 'Basic realm=Restricted')
                 handler._transforms = []
                 handler.finish()
                 return False
-                # The information that the browser sends us is
-            # base64-encoded, and in the format "username:password".
-            # Keep in mind that either username or password could
-            # still be unset, and that you should check to make sure
-            # they reflect valid credentials!
+
             auth_decoded = base64.decodestring(auth_header[6:])
             username, password = auth_decoded.split(':', 2)
             kwargs['basicauth_user'], kwargs['basicauth_pass'] = username, password
             return True
 
-        # Since we're going to attach this to a RequestHandler class,
-        # the first argument will wind up being a reference to an
-        # instance of that class.
         def _execute(self, transforms, *args, **kwargs):
             if not require_basic_auth(self, kwargs):
                 return False
@@ -85,9 +65,7 @@ def haversine(a, b):
     Calculate the great circle distance between two points
     on the earth (specified in decimal degrees)
     """
-    # convert decimal degrees to radians
     lon1, lat1, lon2, lat2 = map(radians, [a['longitude'], a['latitude'], b['longitude'], b['latitude']])
-    # haversine formula
     dlon = lon2 - lon1
     dlat = lat2 - lat1
     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
@@ -199,7 +177,6 @@ class Application(tornado.web.Application):
             password=self.config['mysql']['password']
         )
 
-	#set a custom formatter
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger("webcams")
         self.logger.setLevel(logging.INFO)
@@ -317,7 +294,6 @@ class Application(tornado.web.Application):
                                 self.cache.set(str('subscribers.gcm.%s' % language), subscribers)
                     if 'canonical' in response:
                         for reg_id, canonical_id in response['canonical'].items():
-                            # Repace reg_id with canonical_id in your database
                             subscriber['registration_id'] = canonical_id
                     notif = {
                         "uuid": subscriber['registration_id'],
@@ -343,7 +319,7 @@ class Application(tornado.web.Application):
                     # Check failures. Check codes in APNs reference docs.
                     for token, reason in res.failed.items():
                         code, errmsg = reason
-                        logger.error("Device failed: {0}, reason: {1}".format(token, errmsg))
+                        self.logger.error("Device failed: {0}, reason: {1}".format(token, errmsg))
                         subscribers.remove(subscriber)
                         self.cache.set(str('subscribers.apns.%s' % language), subscribers)
 
@@ -353,7 +329,6 @@ class Application(tornado.web.Application):
 
                     # Check if there are tokens that can be retried
                     if res.needs_retry():
-                        # repeat with retry_message or reschedule your task
                         retry_message = res.retry()
 
                     self.logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
@@ -373,7 +348,7 @@ class Application(tornado.web.Application):
 
         """
         for token, when in self.apns.feedback():
-            self.logger.info("Device token %s unavailable since %s" % (token_hex, str(when)))
+            self.logger.info("Device token %s unavailable since %s" % (token, str(when)))
             for language in ['fr', 'nl', 'de', 'en']:
                 subscribers = self.cache.get(str('subscribers.apns.%s' % language))
                 for subscriber in subscribers:
@@ -409,7 +384,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         return True
 
     def open(self):
-        self.logger.info("Websocket connection from %s" % self.ws_connection)
+        self.application.logger.info("Websocket connection from %s" % self.ws_connection)
         self.uuid = str(uuid.uuid4())
         ack = {
             "uuid": self.uuid,
@@ -418,16 +393,16 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(tornado.escape.json_encode(ack))
 
     def on_close(self):
-        subscribers = self.cache.get(str('subscribers.web.%s' % self.language))
+        subscribers = self.application.cache.get(str('subscribers.web.%s' % self.language))
         subscribers.remove(self)
-        self.cache.set(str('subscribers.web.%s' % self.language), subscribers)
+        self.application.cache.set(str('subscribers.web.%s' % self.language), subscribers)
 
     @classmethod
     def publish(cls, channel, message):
         """
             Publish message to all subscribers on channel.
         """
-        subscribers = cls.cache.get('subscribers.web.%s' % channel)
+        subscribers = cls.application.cache.get('subscribers.web.%s' % channel)
         for subscriber in subscribers:
             subscriber.write_message(tornado.escape.json_encode(message))
 
@@ -449,7 +424,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                     or message["coords"]["longitude"] < -180):
                     raise ValueError
 
-        if message["area"] == None:
+        if message["area"] is None:
             raise AttributeError
         else:
             if message["area"] < 0:
@@ -481,7 +456,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                 6 BYE
         """
 
-        self.logger.info("got message %r", message)
+        self.application.logger.info("got message %r", message)
 
         try:
             parsed = tornado.escape.json_decode(message)
@@ -494,9 +469,9 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                 self.coords = parsed['coords']
                 self.area = parsed["area"]
 
-                subscribers = self.cache.get(str('subscribers.web.%s' % language))
+                subscribers = self.application.cache.get(str('subscribers.web.%s' % self.language))
                 subscribers.append(self)
-                self.cache.set(str('subscribers.web.%s' % language), subscribers)
+                self.application.cache.set(str('subscribers.web.%s' % self.language), subscribers)
 
                 ack = {
                     "uuid": self.uuid,
@@ -510,7 +485,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                     "coords": parsed['coords'],
                     "area": parsed["area"]
                 }
-                for subscriber in self.channels[config['language']]:
+                for subscriber in self.application.cache.get(str('subscribers.web.{0:>s}'.format(self.language))):
                     if subscriber.uuid == parsed['uuid']:
                         subscriber.config = config
                         ack = {
@@ -521,7 +496,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
                         self.ws_connection.write_message(tornado.escape.json_encode(ack))
             #ACK
             elif int(parsed['code']) == 2:
-                self.logger.info("ACK received from subscriber " + self.ws_connection.uuid.value)
+                self.application.logger.info("ACK received from subscriber " + self.ws_connection.uuid.value)
 
         except AttributeError as e:
             logging.exception(e)
@@ -562,7 +537,7 @@ class BaseHandler(tornado.web.RequestHandler):
     def logger(self):
         """
         """
-	return self.application.logger
+        return self.application.logger
     @property
     def gcm(self):
         """
@@ -603,7 +578,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
         try:
             self.logger.info("Request received from android device : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
-            if(data['registration_id'] is None or data['registration_id'] == ""):
+            if(data['registration_id'] is None or not len(data['registration_id'])):
                 raise AttributeError("registration_id is not set")
 
             if data['language'] is None:
@@ -611,13 +586,13 @@ class GoogleCloudMessagingHandler(BaseHandler):
             if data['language'] not in ['fr', 'nl', 'en', 'de']:
                 raise AttributeError("language is not valid")
 
-            if data['area'] is None or data['area'] == "":
+            if data['area'] is None or not len(data['area']):
                 raise AttributeError("area is not set")
 
             if data['area'] < 0:
                 raise ValueError("area must be a positive value")
 
-            if data['coords'] is None or data['coords'] == "":
+            if data['coords'] is None or not len(data['coords']):
                 raise AttributeError("coords is not set")
 
             if data["coords"]["lat"] is None or data["coords"]["lng"] is None:
@@ -664,7 +639,7 @@ class AppleSendNotificationHandler(BaseHandler):
                 #if the payload is too large, we chomp the alert content
                 logging.exception(e)
                 json_overhead_bytes = len(payload.json()) - 1
-                payload = Payload(alert=message[:(MAX_PAYLOAD_LENGTH - json_overhead_bytes)],
+                payload = Payload(alert=message[:(apns.MAX_PAYLOAD_LENGTH - json_overhead_bytes)],
                     sound="default", badge=5)
 
             self.apns.gateway_server.send_notification(device_token, payload)
@@ -710,8 +685,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
                 for subscriber in subscribers:
                     if subscriber['device_token'] == token:
                         subscribers.remove(subscriber)
-
-        cls.cache.set('subscribers.apns.%s' % language, subscribers)
+                cls.cache.set('subscribers.apns.%s' % language, subscribers)
 
     def post(self, *args, **kwargs):
         """
@@ -720,7 +694,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
         try:
             self.logger.info("Request received from iDevice : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
-            if data['device_token'] is None or data['device_token'] == "":
+            if data['device_token'] is None or not len(data['device_token']):
                 raise AttributeError("device_token is not set")
 
             if data['language'] is None:
@@ -728,13 +702,13 @@ class ApplePushNotificationServerHandler(BaseHandler):
             if data['language'] not in ['fr', 'nl', 'en', 'de']:
                 raise AttributeError("language is not valid")
 
-            if data['area'] is None or data['area'] == "":
+            if data['area'] is None or not len(data['area']):
                 raise AttributeError("area is not set")
 
             if data['area'] < 0:
                 raise ValueError("area must be a positive value")
 
-            if data['coords'] is None or data['coords'] == "":
+            if data['coords'] is None or not len(data['coords']):
                 raise AttributeError("coords is not set")
 
             if data["coords"]["latitude"] is None or data["coords"]["longitude"] is None:
@@ -1400,8 +1374,6 @@ if __name__ == "__main__":
         logging.info("BeRoads webserver listening on %s" % (config['server']['port']))
         main_loop = tornado.ioloop.IOLoop.instance()
 
-        #register periodic callbacks to fetch webcams images and fech traffic from data.beroads.com and notify
-        #websockets subscribers.
         tornado.ioloop.PeriodicCallback(
             app.load_traffic,
             int(config['server']['update_time'])*1000,
