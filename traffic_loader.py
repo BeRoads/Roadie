@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = 'quentinkaiser'
 import sys, time
-
+import os
 import requests
 import logging
 import re
@@ -586,7 +586,7 @@ class TrafficLoader:
                             'source': 'Trafiroutes',
                             'time': self.parse_time(region, item.pubdate.string),
                             'message': item.description.string,
-                            'location': item.title.string,
+                            'location': item.title.string
                             'lat' : 0,
                             'lng' : 0
                             }
@@ -777,3 +777,4 @@ if __name__ == "__main__":
             logging.exception(e)
             continue
         break
+
