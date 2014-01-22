@@ -208,13 +208,13 @@ class WebcamsLoader:
                     'referer': "http://trafiroutes.wallonie.be"
                 })
 
-            reg = re.compile(r'src="/camera-images/Camera_(\w+\-*\w+.jpg)')
+            reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
             page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")
             links = reg.findall(page.content)
 
             for i in range(0, len(links)):
                 webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/Camera_%s' % (links[i]),
+                    'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                     'output_url': '%sflanders/image_antwerpen_%d.jpg' % (self.webcams_directory, i),
                     'referer': ''
                 })
@@ -224,28 +224,18 @@ class WebcamsLoader:
 
             for i in range(0, len(links)):
                 webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/Camera_%s' % (links[i]),
+                    'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                     'output_url': '%sflanders/image_gand_%d.jpg' % (self.webcams_directory, i),
                     'referer': ''
                 })
 
-            #flanders
-            page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/lummen")
-            links = reg.findall(page.content)
-
-            for i in range(0, len(links)):
-                webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/Camera_%s' % (links[i]),
-                    'output_url': '%sflanders/image_lummen_%d.jpg' % (self.webcams_directory, i),
-                    'referer': ''
-                })
 
             #brussels
             page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/brussel")
             links = reg.findall(page.content)
             for i in range(0, len(links)):
                 webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/Camera_%s' % (links[i]),
+                    'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                     'output_url': '%sflanders/image_brussel_%d.jpg' % (self.webcams_directory, i),
                     'referer': ''
                 })
@@ -312,6 +302,7 @@ class WebcamsLoader:
 
 
 if __name__ == "__main__":
+    
     parser = OptionParser()
     parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
     (options, args) = parser.parse_args()
@@ -333,3 +324,4 @@ if __name__ == "__main__":
             logging.exception(e)
             continue
         break
+
