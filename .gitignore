@@ -2,6 +2,7 @@
 .ropeproject
 .idea/workspace.xml
 .htaccess
+
 config.ini
 auth/*
 env/*
