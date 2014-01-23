@@ -195,6 +195,7 @@ class WebcamsLoader:
                 return False
         except Exception as e:
             self.logger.exception(e)
+        return True
 
     def scrap_webcams(self, webcams_urls_queue):
         try:
