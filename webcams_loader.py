@@ -65,7 +65,6 @@ class WebcamsLoader:
                         out_queue.put(None)
                     else:
                         response = requests.get(item['input_url'], headers={"Referer": item['referer']})
-
                         if 'last-modified' in response.headers:
                             item['last-modified'] = calendar.timegm(datetime.datetime.strptime(
                                 response.headers['last-modified'],
@@ -106,6 +105,7 @@ class WebcamsLoader:
                     item = in_queue.get(True)
                     if item is None:
                         again = False
+                        out_queue.put(None)
                     else:
                         #we mark the webcam's availability in our database
                         item['available'] = self.is_available(item)
