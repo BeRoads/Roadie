@@ -48,3 +48,4 @@ Twitter API to tweet about these events. Events have a specific language, so do 
 url that link back to our server (ie. http://beroads.com/events/2330)
 
 Visit our website at http://beroads.com and contact us at info@beroads.com
+

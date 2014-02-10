@@ -65,6 +65,7 @@ class WebcamsLoader:
                         out_queue.put(None)
                     else:
                         response = requests.get(item['input_url'], headers={"Referer": item['referer']})
+
                         if 'last-modified' in response.headers:
                             item['last-modified'] = calendar.timegm(datetime.datetime.strptime(
                                 response.headers['last-modified'],
