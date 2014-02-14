@@ -8,7 +8,6 @@ import datetime
 import calendar
 import configparser
 from PIL import Image
-import StringIO
 
 
 class WebcamsLoader:
@@ -55,34 +54,31 @@ class WebcamsLoader:
 
 
     def load_webcams(self, in_queue, out_queue):
-        try:
-            again = True
-            while again:
+
+        while 1:
+            try:
                 if not in_queue.empty():
                     item = in_queue.get(True)
-                    if item is None:
-                        again = False
-                        out_queue.put(None)
+                    response = requests.get(item['input_url'], headers={"Referer": item['referer']})
+                    if 'last-modified' in response.headers:
+                        item['last-modified'] = calendar.timegm(datetime.datetime.strptime(
+                            response.headers['last-modified'],
+                            '%a, %d %b %Y %H:%M:%S %Z'
+                        ).utctimetuple())
                     else:
-                        response = requests.get(item['input_url'], headers={"Referer": item['referer']})
+                        item['last-modified'] = None
 
-                        if 'last-modified' in response.headers:
-                            item['last-modified'] = calendar.timegm(datetime.datetime.strptime(
-                                response.headers['last-modified'],
-                                '%a, %d %b %Y %H:%M:%S %Z'
-                            ).utctimetuple())
-                        else:
-                            item['last-modified'] = None
+                    with open(item['output_url'], "wb") as f:
+                        f.write(response.content)
+                    out_queue.put(item)
+            except KeyboardInterrupt:
+                self.logger.info('Cleaning up webcams loader...')
+                break
+            except Exception as e:
+                self.logger.exception(e)
 
-                        with open(item['output_url'], "wb") as f:
-                            f.write(response.content)
-                        out_queue.put(item)
-        except Exception as e:
-            self.logger.exception(e)
-        except KeyboardInterrupt as e:
-            sys.exit(0)
 
-    def check_availability(self, in_queue, out_queue):
+    def check_availability(self, in_queue):
         """
             This function read webcam items from in_queue and update their availability depending on the result of
             a call to is_available.
@@ -90,55 +86,47 @@ class WebcamsLoader:
         """
         con = None
         cursor = None
-        try:
 
-            con = MySQLdb.connect(
-                str(self.config['mysql']['host']),
-                str(self.config['mysql']['username']),
-                str(self.config['mysql']['password']),
-                str(self.config['mysql']['database']),
-                charset='utf8'
-            )
-            cursor = con.cursor()
-            again = True
-            while again:
+        while 1:
+            try:
+                con = MySQLdb.connect(
+                    str(self.config['mysql']['host']),
+                    str(self.config['mysql']['username']),
+                    str(self.config['mysql']['password']),
+                    str(self.config['mysql']['database']),
+                    charset='utf8'
+                )
+                cursor = con.cursor()
+
                 if not in_queue.empty():
                     item = in_queue.get(True)
-                    if item is None:
-                        again = False
-                        out_queue.put(None)
-                    else:
-                        #we mark the webcam's availability in our database
-                        item['available'] = self.is_available(item)
-                        query = "UPDATE cameras SET enabled = %d WHERE img = 'http://webcams.beroads.com/%s'" % (
-                            item['available'], item['output_url'].replace(self.webcams_directory, ''))
-                        cursor = con.cursor()
-                        cursor.execute(query)
-                        self.logger.info("Item : %s" % item)
-                    out_queue.put(item)
+                    #we mark the webcam's availability in our database
+                    item['available'] = self.is_available(item)
+                    query = "UPDATE cameras SET enabled = %d WHERE img = 'http://webcams.beroads.com/%s'" % (
+                        item['available'], item['output_url'].replace(self.webcams_directory, ''))
+                    cursor = con.cursor()
+                    cursor.execute(query)
+                    self.logger.info("Item : %s" % item)
+                    con.commit()
 
-            con.commit()
-            con.close()
-
-        except KeyboardInterrupt as e:
-            if con:
-                con.rollback()
+            except KeyboardInterrupt as e:
+                self.logger.info('Cleaning up availability checker...')
+                if con:
+                    con.rollback()
                 if cursor:
                     cursor.close()
                 con.close()
-            sys.exit(2)
-        except MySQLdb.Error as e:
-            self.logger.exception(e)
-            if con:
-                con.rollback()
-                if cursor:
-                    cursor.close()
-                con.close()
-            sys.exit(2)
-        except Exception as e:
-            self.logger.exception(e)
-            if con:
-                con.close()
+                break
+            except MySQLdb.Error as e:
+                self.logger.exception(e)
+                if con:
+                    con.rollback()
+                    if cursor:
+                        cursor.close()
+                    con.close()
+                break
+            except Exception as e:
+                self.logger.exception(e)
 
 
     def is_available(self, item):
@@ -198,107 +186,100 @@ class WebcamsLoader:
             self.logger.exception(e)
         return True
 
-    def scrap_webcams(self, webcams_urls_queue):
-        try:
-            #load webcams from Centre Perex
-            for i in range(0, 51):
-                webcams_urls_queue.put({
-                    'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
-                    'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
-                    'referer': "http://trafiroutes.wallonie.be"
-                })
+    def scrap_webcams(self, out_queue):
 
-            reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
-            page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")
-            links = reg.findall(page.content)
+        while 1:
+            try:
+                #load webcams from Centre Perex
+                for i in range(0, 51):
+                    out_queue.put({
+                        'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
+                        'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
+                        'referer': "http://trafiroutes.wallonie.be"
+                    })
+                reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
+                page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")
+                links = reg.findall(page.content)
 
-            for i in range(0, len(links)):
-                webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
-                    'output_url': '%sflanders/image_antwerpen_%d.jpg' % (self.webcams_directory, i),
-                    'referer': ''
-                })
+                for i in range(0, len(links)):
+                    out_queue.put({
+                        'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
+                        'output_url': '%sflanders/image_antwerpen_%d.jpg' % (self.webcams_directory, i),
+                        'referer': ''
+                    })
 
-            page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent")
-            links = reg.findall(page.content)
+                page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent")
+                links = reg.findall(page.content)
 
-            for i in range(0, len(links)):
-                webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
-                    'output_url': '%sflanders/image_gand_%d.jpg' % (self.webcams_directory, i),
-                    'referer': ''
-                })
+                for i in range(0, len(links)):
+                    out_queue.put({
+                        'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
+                        'output_url': '%sflanders/image_gand_%d.jpg' % (self.webcams_directory, i),
+                        'referer': ''
+                    })
 
 
-            #brussels
-            page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/brussel")
-            links = reg.findall(page.content)
-            for i in range(0, len(links)):
-                webcams_urls_queue.put({
-                    'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
-                    'output_url': '%sflanders/image_brussel_%d.jpg' % (self.webcams_directory, i),
-                    'referer': ''
-                })
+                #brussels
+                page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/brussel")
+                links = reg.findall(page.content)
+                for i in range(0, len(links)):
+                    out_queue.put({
+                        'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
+                        'output_url': '%sflanders/image_brussel_%d.jpg' % (self.webcams_directory, i),
+                        'referer': ''
+                    })
 
-            page = requests.get("http://www.bruxellesmobilite.irisnet.be/cameras/json/fr/")
-            jsonpage = json.loads(page.content)
-            for i in range(0, len(jsonpage['features'])):
-                webcams_urls_queue.put({
-                    'input_url': 'http://www.bruxellesmobilite.irisnet.be%s' % (
-                        jsonpage['features'][i]['properties']['src']),
-                    'output_url': '%sbrussels/image_ringbxl_%d.jpg' % (self.webcams_directory, i),
-                    'referer': ''
-                })
-            webcams_urls_queue.put(None)
-        except KeyboardInterrupt as e:
-            self.logger.exception(e)
-            sys.exit(0)
-        except Exception as e:
-            self.logger.exception(e)
+                page = requests.get("http://www.bruxellesmobilite.irisnet.be/cameras/json/fr/")
+                jsonpage = json.loads(page.content)
+                for i in range(0, len(jsonpage['features'])):
+                    out_queue.put({
+                        'input_url': 'http://www.bruxellesmobilite.irisnet.be%s' % (
+                            jsonpage['features'][i]['properties']['src']),
+                        'output_url': '%sbrussels/image_ringbxl_%d.jpg' % (self.webcams_directory, i),
+                        'referer': ''
+                    })
+                time.sleep(self.sleep_time)
 
+            except Exception as e:
+                self.logger.exception(e)
+            except KeyboardInterrupt as e:
+                self.logger.info('Cleaning up webcams scraper...')
+                break
     def run(self):
         """
             Simple batch processing of pictures that we have
         """
+        queues = [multiprocessing.Queue() for i in range(2)]
+        workers = [None for i in range(3)]
 
-        webcams_queue = multiprocessing.Queue()
-        loaded_webcams_queue = multiprocessing.Queue()
-        checked_webcams_queue = multiprocessing.Queue()
-
-        webcams_scraper = multiprocessing.Process(name='webcams_scraper',
+        workers[0] = multiprocessing.Process(name='webcams_scraper',
             target=self.scrap_webcams,
-            args=(webcams_queue,)
+            args=(queues[0],)
         )
 
-        webcams_loader = multiprocessing.Process(name='webcams_loader',
+        workers[1] = multiprocessing.Process(name='webcams_loader',
             target=self.load_webcams,
-            args=(webcams_queue, loaded_webcams_queue)
+            args=(queues[0], queues[1],)
         )
 
-        availability_checker = multiprocessing.Process(name='availability_checker',
+        workers[2] = multiprocessing.Process(name='availability_checker',
             target=self.check_availability,
-            args=(loaded_webcams_queue, checked_webcams_queue)
+            args=(queues[1],)
         )
-        webcams_scraper.start()
-        webcams_loader.start()
-        availability_checker.start()
 
+        for worker in workers:
+            worker.start()
         try:
-            again = True
-            while again:
-                if not checked_webcams_queue.empty():
-                    item = checked_webcams_queue.get(True)
-                    if item is None:
-                        again = False
-            time.sleep(self.sleep_time)
-            webcams_scraper.terminate()
-            webcams_loader.terminate()
-            availability_checker.terminate()
-            self.run()
-        except Exception as e:
-            self.logger.exception(e)
+            for worker in workers:
+                worker.join()
         except KeyboardInterrupt as e:
-            sys.exit(0)
+            for worker in workers:
+                worker.join()
+            self.logger.info('done !')
+            return
+        except Exception as e:
+            self.logger.error(e)
+
 
 
 if __name__ == "__main__":
@@ -310,18 +291,5 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(options.config)
 
-    while True:
-    #this is a trick to be "error resilient", in fact the majority of errors that
-    #we got is because our sources are not available or their server are too slow
-    #by enabling this we don't stop the process on error and keep running ;-)
-        try:
-            webcams_loader = WebcamsLoader(config)
-            webcams_loader.run()
-        except KeyboardInterrupt as e:
-            logging.exception(e)
-            sys.exit(0)
-        except Exception as e:
-            logging.exception(e)
-            continue
-        break
-
+    webcams_loader = WebcamsLoader(config)
+    webcams_loader.run()
