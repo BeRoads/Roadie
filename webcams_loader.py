@@ -62,8 +62,8 @@ class WebcamsLoader:
                     response = requests.get(
                         item['input_url'],
                         headers=item['headers'])
-
                     item['status_code'] = response.status_code
+
                     if 'last-modified' in response.headers:
                         item['last-modified'] = calendar.timegm(datetime.datetime.strptime(
                             response.headers['last-modified'],
@@ -81,7 +81,6 @@ class WebcamsLoader:
                 break
             except Exception as e:
                 self.logger.exception(e)
-
 
     def check_availability(self, in_queue):
         """
@@ -218,7 +217,6 @@ class WebcamsLoader:
                             'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
                         }
                     })
-
 
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent")
                 links = reg.findall(page.content)
