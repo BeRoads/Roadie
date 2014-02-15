@@ -59,7 +59,11 @@ class WebcamsLoader:
             try:
                 if not in_queue.empty():
                     item = in_queue.get(True)
-                    response = requests.get(item['input_url'], headers={"Referer": item['referer']})
+                    response = requests.get(
+                        item['input_url'],
+                        headers=item['headers'])
+
+                    item['status_code'] = response.status_code
                     if 'last-modified' in response.headers:
                         item['last-modified'] = calendar.timegm(datetime.datetime.strptime(
                             response.headers['last-modified'],
@@ -68,8 +72,9 @@ class WebcamsLoader:
                     else:
                         item['last-modified'] = None
 
-                    with open(item['output_url'], "wb") as f:
-                        f.write(response.content)
+                    if response.status_code == 200:
+                        with open(item['output_url'], "wb") as f:
+                            f.write(response.content)
                     out_queue.put(item)
             except KeyboardInterrupt:
                 self.logger.info('Cleaning up webcams loader...')
@@ -143,9 +148,11 @@ class WebcamsLoader:
             d = datetime.datetime.utcnow()
             now = calendar.timegm(d.utctimetuple())
 
-            if 'last-modified' in item and item['last-modified'] < now - 60 * 60:
+            if 'status_code' in item and item['status_code'] != 200:
                 return False
 
+            if 'last-modified' in item and item['last-modified'] < now - 60 * 60:
+                return False
 
             with open('%ssamples/unavailable_wallonia.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
                 c1 = f1.read()
@@ -195,7 +202,9 @@ class WebcamsLoader:
                     out_queue.put({
                         'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
                         'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
-                        'referer': "http://trafiroutes.wallonie.be"
+                        'headers': {
+                            'Referer' : 'http://trafiroutes.wallonie.be'
+                        }
                     })
                 reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")
@@ -205,8 +214,11 @@ class WebcamsLoader:
                     out_queue.put({
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                         'output_url': '%sflanders/image_antwerpen_%d.jpg' % (self.webcams_directory, i),
-                        'referer': ''
+                        'headers': {
+                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                        }
                     })
+
 
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent")
                 links = reg.findall(page.content)
@@ -215,7 +227,9 @@ class WebcamsLoader:
                     out_queue.put({
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                         'output_url': '%sflanders/image_gand_%d.jpg' % (self.webcams_directory, i),
-                        'referer': ''
+                        'headers': {
+                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                        }
                     })
 
 
@@ -226,7 +240,9 @@ class WebcamsLoader:
                     out_queue.put({
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                         'output_url': '%sflanders/image_brussel_%d.jpg' % (self.webcams_directory, i),
-                        'referer': ''
+                        'headers': {
+                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                        }
                     })
 
                 page = requests.get("http://www.bruxellesmobilite.irisnet.be/cameras/json/fr/")
@@ -236,7 +252,9 @@ class WebcamsLoader:
                         'input_url': 'http://www.bruxellesmobilite.irisnet.be%s' % (
                             jsonpage['features'][i]['properties']['src']),
                         'output_url': '%sbrussels/image_ringbxl_%d.jpg' % (self.webcams_directory, i),
-                        'referer': ''
+                        'headers': {
+                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                        }
                     })
                 time.sleep(self.sleep_time)
 
