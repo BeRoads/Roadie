@@ -585,7 +585,6 @@ class TrafficLoader:
 
             elif region == "brussels":
                 import time
-
                 try:
                     json_tab = json.loads(traffic)
                     for element in json_tab['features']:
