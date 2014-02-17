@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 __author__ = 'quentinkaiser'
 import sys, time
-import os
 import requests
 import logging
 import re
 import json
-import math
 import hashlib
 import memcache
 import datetime
@@ -18,6 +16,7 @@ import time
 from optparse import OptionParser
 import configparser
 import calendar
+import pyproj
 
 
 
@@ -48,66 +47,6 @@ def unescape(text):
         return text # leave as is
 
     return re.sub(u"&#?\w+;", fixup, text)
-
-
-class Tools:
-    """
-
-    """
-
-    def __init__(self):
-        self.a = 6378388.0
-        self.f = 1 / 297.0
-        self.x0 = 150000.013
-        self.y0 = 5400088.438
-        self.e = math.sqrt(2 * self.f - self.f * self.f)
-        self.p0 = math.radians(90.0)
-        self.p1 = math.radians(49.83333367)
-        self.p2 = math.radians(51.166664006)
-        self.l0 = math.radians(4.367158666)
-        self.m1 = math.cos(self.p1) / math.sqrt(1 - self.e * self.e * math.sin(self.p1) * math.sin(self.p1))
-        self.m2 = math.cos(self.p2) / math.sqrt(1 - self.e * self.e * math.sin(self.p2) * math.sin(self.p2))
-        self.t1 = math.tan(math.pi / 4.0 - self.p1 / 2.0) / math.pow(
-            (1 - self.e * math.sin(self.p1)) / (1 + self.e * math.sin(self.p1)), self.e / 2.0)
-        self.t2 = math.tan(math.pi / 4.0 - self.p2 / 2.0) / math.pow(
-            (1 - self.e * math.sin(self.p2)) / (1 + self.e * math.sin(self.p2)), self.e / 2.0)
-        self.t0 = math.tan(math.pi / 4.0 - self.p0 / 2.0) / math.pow(
-            (1 - self.e * math.sin(self.p0)) / (1.0 + self.e * math.sin(self.p0)), self.e / 2)
-        self.n = (math.log(self.m1) - math.log(self.m2)) / (math.log(self.t1) - math.log(self.t2))
-        self.g = self.m1 / (self.n * math.pow(self.t1, self.n))
-        self.r0 = self.a * self.g * math.pow(self.t0, self.n)
-
-    def lambert_to_WGS84(self, x, y):
-        """
-
-        """
-        r = math.sqrt((x - self.x0) * (x - self.x0) + (self.r0 - (y - self.y0)) * (self.r0 - (y - self.y0)))
-        t = math.pow((r / (self.a * self.g)), 1 / self.n)
-        theta = math.atan((x - self.x0) / (self.r0 - y + self.y0))
-        lam = (theta / self.n) + self.l0
-        phi = math.pi / 2.0 - 2.0 * math.atan(t) #this is a wild guess
-        #we're going to make this guess better on each iteration
-        for i in range(0, 10):
-            phi = math.pi / 2 - 2 * math.atan(
-                t * math.pow((1.0 - self.e * math.sin(phi)) / (1.0 + self.e * math.sin(phi)), self.e / 2.0))
-
-        return {"latitude": math.degrees(phi), "longitude": math.degrees(lam)}
-
-
-    def WGS84_to_lambert(self, phi, lam):
-        """
-
-        """
-        phi = math.radians(phi)
-        lam = math.radians(lam)
-        t = math.tan(math.pi / 4 - phi / 2) / math.pow((1 - self.e * math.sin(phi)) / (1 + self.e * math.sin(phi)),
-            self.e / 2)
-        r = self.a * self.g * math.pow(t, self.n)
-        theta = self.n * (lam - self.l0)
-        x = self.x0 + r * math.sin(theta)
-        y = self.y0 + self.r0 - r * math.cos(theta)
-
-        return {"lam": x, "phi": y}
 
 
 class Geocoder:
@@ -343,6 +282,13 @@ class TrafficLoader:
         self.config = config
 
         self.sleep_time = int(config['traffic']['update_time'])
+
+        self.wgs84_projection = pyproj.Proj('+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+        self.lambert_projection = pyproj.Proj('+proj=lcc +lat_1=51.16666723333333 +lat_2=49.8333339 '
+                                              '+lat_0=90 +lon_0=4.367486666666666 +x_0=150000.013 +y_0=5400088.438 '
+                                              '+ellps=intl '
+                                              '+towgs84=-106.8686,52.2978,-103.7329,-0.3366,0.457,-1.8422,-1.2747 '
+                                              '+units=m +no_defs')
 
         #set a custom formatter
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -642,12 +588,9 @@ class TrafficLoader:
 
                 try:
                     json_tab = json.loads(traffic)
-                    t = Tools()
                     for element in json_tab['features']:
                         coordinates = element['geometry']['coordinates']
-
-                        #TODO : fix coordinates translation
-                        coordinates = t.lambert_to_WGS84(coordinates[0], coordinates[1])
+                        lat, lng = pyproj.transform(self.lambert_projection, self.wgs84_projection, coordinates[0], coordinates[1])
 
                         item = {
                             'region': region,
