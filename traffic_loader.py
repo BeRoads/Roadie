@@ -582,7 +582,6 @@ class TrafficLoader:
                 except Exception as e:
                     self.logger.exception(e)
 
-
             elif region == "brussels":
                 import time
                 try:
