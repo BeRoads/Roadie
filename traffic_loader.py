@@ -600,8 +600,8 @@ class TrafficLoader:
                             'time': datetime.datetime.now(),
                             'message': element['properties']['cause'],
                             'location': unescape(element['properties']['street_name']),
-                            'lat': coordinates['latitude'],
-                            'lng': coordinates['longitude']
+                            'lat': lat,
+                            'lng': lng
                         }
                         out_queue.put(item)
                     out_queue.put(None)
