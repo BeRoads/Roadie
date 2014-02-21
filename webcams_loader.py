@@ -75,6 +75,10 @@ class WebcamsLoader:
                     if response.status_code == 200:
                         with open(item['output_url'], "wb") as f:
                             f.write(response.content)
+                        img = Image.open(item['output_url'])
+                        thumb = img.resize((120, 120), Image.ANTIALIAS)
+                        thumb.save("%s_thumb.jpg"%(item['output_url'].replace('.jpg', '')))
+
                     out_queue.put(item)
             except KeyboardInterrupt:
                 self.logger.info('Cleaning up webcams loader...')
@@ -196,13 +200,17 @@ class WebcamsLoader:
 
         while 1:
             try:
+                timestamp = time.time()-self.sleep_time
                 #load webcams from Centre Perex
                 for i in range(0, 51):
                     out_queue.put({
                         'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
                         'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'Referer' : 'http://trafiroutes.wallonie.be'
+                            'Referer' : 'http://trafiroutes.wallonie.be',
+                            'Accept-Encoding' : 'gzip, deflate',
+                            'If-Modified-Since' : time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp)),
+                            'If-None-Match' : ''
                         }
                     })
                 reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
@@ -214,7 +222,10 @@ class WebcamsLoader:
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                         'output_url': '%sflanders/image_antwerpen_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                            'Referer' : 'http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen',
+                            'Accept' : 'image/png,image/*;q=0.8,*/*;q=0.5',
+                            'Accept-Encoding' : 'gzip, deflate',
+                            'If-Modified-Since' : time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp))
                         }
                     })
 
@@ -226,7 +237,10 @@ class WebcamsLoader:
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                         'output_url': '%sflanders/image_gand_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                            'Referer' : 'http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent',
+                            'Accept' : 'image/png,image/*;q=0.8,*/*;q=0.5',
+                            'Accept-Encoding' : 'gzip, deflate',
+                            'If-Modified-Since' : time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp))
                         }
                     })
 
@@ -239,7 +253,10 @@ class WebcamsLoader:
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
                         'output_url': '%sflanders/image_brussel_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                            'Referer' : 'http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/brussel',
+                            'Accept' : 'image/png,image/*;q=0.8,*/*;q=0.5',
+                            'Accept-Encoding' : 'gzip, deflate',
+                            'If-Modified-Since' : time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp))
                         }
                     })
 
@@ -251,7 +268,8 @@ class WebcamsLoader:
                             jsonpage['features'][i]['properties']['src']),
                         'output_url': '%sbrussels/image_ringbxl_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'If-Modified-Since' : time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(int(time.time()-self.sleep_time)))
+                            'Accept-Encoding' : 'gzip, deflate',
+                            'If-Modified-Since' : time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp))
                         }
                     })
                 time.sleep(self.sleep_time)
