@@ -78,6 +78,7 @@ class WebcamsLoader:
                         img = Image.open(item['output_url'])
                         thumb = img.resize((120, 120), Image.ANTIALIAS)
                         thumb.save("%s_thumb.jpg"%(item['output_url'].replace('.jpg', '')))
+                        
                     out_queue.put(item)
             except KeyboardInterrupt:
                 self.logger.info('Cleaning up webcams loader...')
