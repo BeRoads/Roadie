@@ -8,7 +8,7 @@ import datetime
 import calendar
 import configparser
 from PIL import Image
-
+from requests.auth import HTTPBasicAuth
 
 class WebcamsLoader:
     """
@@ -59,9 +59,16 @@ class WebcamsLoader:
             try:
                 if not in_queue.empty():
                     item = in_queue.get(True)
-                    response = requests.get(
-                        item['input_url'],
-                        headers=item['headers'])
+                    if 'auth' in item:
+                        response = requests.get(
+                            item['input_url'],
+                            headers=item['headers'],
+                            auth=item['auth']
+                        )
+                    else:
+                        response = requests.get(
+                            item['input_url'],
+                            headers=item['headers'])
                     item['status_code'] = response.status_code
 
                     if 'last-modified' in response.headers:
@@ -203,14 +210,13 @@ class WebcamsLoader:
                 #load webcams from Centre Perex
                 for i in range(0, 51):
                     out_queue.put({
-                        'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
+                        'input_url': 'http://nas.charl.in/webcams/image%d.jpg' % (i),
                         'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
                             'Referer' : 'http://trafiroutes.wallonie.be',
-                            'Accept-Encoding' : 'gzip, deflate',
-                            'If-Modified-Since' : time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(timestamp)),
-                            'If-None-Match' : ''
-                        }
+                            'Accept-Encoding' : 'gzip, deflate'
+                        },
+                        'auth' : HTTPBasicAuth('beroads', 'supermamy')
                     })
                 reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")
