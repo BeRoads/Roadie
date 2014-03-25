@@ -804,7 +804,7 @@ class DashboardHandler(BaseHandler):
             sources = [
                     {
                     'name': 'Centre Perex',
-                    'url': 'http://trafiroutes.wallonie.be',
+                    'url': 'http://trafiroutes.wallonie.be/trafiroutes/maptempsreel/',
                     'status': 0
                 },
                     {
