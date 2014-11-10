@@ -237,7 +237,8 @@ class Application(tornado.web.Application):
         """
         self.logger.info("Notifying subscribers from channel %s" % language)
 
-        for subscriber in self.cache.get(str('subscribers.web.%s' % language)):
+        
+	for subscriber in self.cache.get(str('subscribers.web.%s' % language)) or []:
             for event in events:
                 distance = int(haversine(subscriber.coords,
                         {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
