@@ -210,13 +210,14 @@ class WebcamsLoader:
                 #load webcams from Centre Perex
                 for i in range(0, 51):
                     out_queue.put({
-                        'input_url': 'http://nas.charl.in/webcams/image%d.jpg' % (i),
+                        #'input_url': 'http://nas.charl.in/webcams/image%d.jpg' % (i),
+			'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/%d.jpg' % (i),
                         'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'Referer' : 'http://trafiroutes.wallonie.be',
+                            'Referer' : 'http://trafiroutes.wallonie.be/trafiroutes/flex/TrafiroutesViewer.swf',
                             'Accept-Encoding' : 'gzip, deflate'
-                        },
-                        'auth' : HTTPBasicAuth('beroads', 'supermamy')
+                        }#,
+                        #'auth' : HTTPBasicAuth('beroads', 'supermamy')
                     })
                 reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")

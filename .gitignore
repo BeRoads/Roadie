@@ -3,6 +3,9 @@
 .idea/workspace.xml
 .htaccess
 config.ini
+supervisord.cfg
+beroads.log
+npm-debug.log
 auth/*
 env/*
 logs/*

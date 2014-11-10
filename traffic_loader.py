@@ -588,7 +588,7 @@ class TrafficLoader:
                     json_tab = json.loads(traffic)
                     for element in json_tab['features']:
                         coordinates = element['geometry']['coordinates']
-                        lat, lng = pyproj.transform(self.lambert_projection, self.wgs84_projection,
+                        lng, lat = pyproj.transform(self.lambert_projection, self.wgs84_projection,
                             coordinates[0], coordinates[1])
                         item = {
                             'region': region,
