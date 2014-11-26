@@ -161,13 +161,15 @@ class Application(tornado.web.Application):
         
         self.last_insert_time = int(time.time())
         self.gcm = GCM(self.config['push']['gcm_api_key'])
-        certificate = Certificate(
+        '''certificate = Certificate(
             cert_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
             key_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
             passphrase=str(self.config['push']['apns_passphrase'])
-        )
+        )'''
         session = Session()
-        con = session.get_connection("push_production", certificate=certificate)
+        con = session.get_connection("push_production", cert_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
+            key_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
+            passphrase=str(self.config['push']['apns_passphrase']))
         self.apns = APNs(con)
         # Have one global connection to the TDT DB across all handlers
         self.db = torndb.Connection(
