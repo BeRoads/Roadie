@@ -2,7 +2,6 @@
 __author__ = 'quentinkaiser'
 import memcache
 import sys
-import apns
 import tornado.escape
 import tornado.ioloop
 from tornado.options import options, define
@@ -25,7 +24,7 @@ from math import radians, cos, sin, asin, sqrt, atan2
 import uuid
 
 from gcm import *
-from apnsclient import *
+from apns_clerk import *
 import configparser
 
 def require_basic_auth(handler_class):
@@ -158,14 +157,12 @@ class Application(tornado.web.Application):
         tornado.web.Application.__init__(self, handlers, **settings)
 
         self.config = config
-        
+
+        print self.config['push']
+
         self.last_insert_time = int(time.time())
         self.gcm = GCM(self.config['push']['gcm_api_key'])
-        '''certificate = Certificate(
-            cert_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
-            key_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
-            passphrase=str(self.config['push']['apns_passphrase'])
-        )'''
+
         session = Session()
         con = session.get_connection("push_production", cert_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
             key_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
