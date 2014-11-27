@@ -1,10 +1,10 @@
 ## The following requirements were added by pip --freeze:
 BeautifulSoup==3.2.1
 MySQL-python==1.2.5
-PIL==1.1.7
+pillow==2.6.1
 Twisted==14.0.2
-apns==2.0
-apns-client==0.2.1
+##apns==2.0
+apns-clerk==0.1.1
 argparse==1.2.1
 backports.ssl-match-hostname==3.4.0.2
 certifi==14.05.14
