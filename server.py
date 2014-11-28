@@ -131,7 +131,7 @@ class Application(tornado.web.Application):
 
         settings = dict(
             cookie_secret="5725af95ef74805b753cd3689bb3393681e02ce6",
-            static_path="%s/static"%os.path.dirname(__file__),
+            static_path="%s/static"%os.path.dirname(os.path.abspath(__file__)) ,
             xsrf_cookies=False,
         )
 
@@ -162,8 +162,8 @@ class Application(tornado.web.Application):
         self.gcm = GCM(self.config['push']['gcm_api_key'])
 
         session = Session()
-        con = session.get_connection("push_production", cert_file='%s%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
-            key_file='%s%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
+        con = session.get_connection("push_production", cert_file='%s/%s'%(os.path.dirname(os.path.abspath(__file__)) , self.config['push']['apns_certificate']),
+            key_file='%s/%s'%(os.path.dirname(os.path.abspath(__file__)) , self.config['push']['apns_key']),
             passphrase=str(self.config['push']['apns_passphrase']))
         self.apns = APNs(con)
         # Have one global connection to the TDT DB across all handlers
@@ -1360,9 +1360,10 @@ if __name__ == "__main__":
 
     try:
         parser = OptionParser()
-        parser.add_option("-c", "--config", type="string", default="%sconfig.ini"%os.path.dirname(__file__), help="configuration file")
+        parser.add_option("-c", "--config", type="string", default="%s/config.ini"%os.path.dirname(os.path.abspath(__file__)) , help="configuration file")
         (options, args) = parser.parse_args()
 
+        print hashlib.sha1('lioneldashboard').hexdigest()
         config = configparser.ConfigParser()
         config.read(options.config)
 
