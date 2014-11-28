@@ -158,14 +158,12 @@ class Application(tornado.web.Application):
 
         self.config = config
 
-        print self.config['push']
-
         self.last_insert_time = int(time.time())
         self.gcm = GCM(self.config['push']['gcm_api_key'])
 
         session = Session()
-        con = session.get_connection("push_production", cert_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
-            key_file='%s/%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
+        con = session.get_connection("push_production", cert_file='%s%s'%(os.path.dirname(__file__), self.config['push']['apns_certificate']),
+            key_file='%s%s'%(os.path.dirname(__file__), self.config['push']['apns_key']),
             passphrase=str(self.config['push']['apns_passphrase']))
         self.apns = APNs(con)
         # Have one global connection to the TDT DB across all handlers
@@ -1362,7 +1360,7 @@ if __name__ == "__main__":
 
     try:
         parser = OptionParser()
-        parser.add_option("-c", "--config", type="string", default="%s/config.ini"%os.path.dirname(__file__), help="configuration file")
+        parser.add_option("-c", "--config", type="string", default="%sconfig.ini"%os.path.dirname(__file__), help="configuration file")
         (options, args) = parser.parse_args()
 
         config = configparser.ConfigParser()
