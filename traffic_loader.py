@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 __author__ = 'quentinkaiser'
-import sys, time
-import requests
-import logging
-import re
-import json
+import sys,os,time,logging,requests,re,json
 import hashlib
 import memcache
 import datetime
@@ -12,7 +8,6 @@ from BeautifulSoup import BeautifulSoup
 import htmlentitydefs
 import multiprocessing
 import MySQLdb
-import time
 from optparse import OptionParser
 import configparser
 import calendar
@@ -115,8 +110,8 @@ class Geocoder:
     ]
 
 
-    def __init__(self):
-        log_file_name = "/var/log/beroads/geocoding"
+    def __init__(self,config):
+        log_file_name = config['traffic']['log_geocoding']
 
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger("geocoder")
@@ -502,7 +497,7 @@ class TrafficLoader:
         """
 
         try:
-            geocoder = Geocoder()
+            geocoder = Geocoder(self.config)
             region = raw_data['region']
             language = raw_data['language']
             traffic = raw_data['content']
@@ -698,7 +693,7 @@ class TrafficLoader:
 
 if __name__ == "__main__":
     parser = OptionParser()
-    parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
+    parser.add_option("-c", "--config", type="string", default="%s/config.ini" % os.path.dirname(os.path.abspath(__file__)), help="configuration file")
     (options, args) = parser.parse_args()
 
     config = configparser.ConfigParser()

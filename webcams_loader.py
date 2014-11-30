@@ -325,7 +325,7 @@ class WebcamsLoader:
 if __name__ == "__main__":
     
     parser = OptionParser()
-    parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
+    parser.add_option("-c", "--config", type="string", default="%s/config.ini"%os.path.dirname(os.path.abspath(__file__)) , help="configuration file")
     (options, args) = parser.parse_args()
 
     config = configparser.ConfigParser()
