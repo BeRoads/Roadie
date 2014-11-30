@@ -208,14 +208,29 @@ class WebcamsLoader:
             try:
                 timestamp = time.time()-self.sleep_time
                 #load webcams from Centre Perex
+             #    for i in range(0, 51):
+             #        out_queue.put({
+             #            #'input_url': 'http://nas.charl.in/webcams/image%d.jpg' % (i),
+			# 'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/%d.jpg' % (i),
+             #            'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
+             #            'headers': {
+             #                'Referer': 'http://trafiroutes.wallonie.be/trafiroutes/pages/mobile/index_FR.html',
+             #                'Accept': 'image/webp,*/*;q=0.8',
+             #                'Accept-Encoding': 'gzip, deflate, sdch',
+             #                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.10 Safari/537.36'
+             #            }#,
+             #            #'auth' : HTTPBasicAuth('beroads', 'supermamy')
+             #        })
+
                 for i in range(0, 51):
                     out_queue.put({
-                        #'input_url': 'http://nas.charl.in/webcams/image%d.jpg' % (i),
-			'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/%d.jpg' % (i),
+			            'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
                         'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
-                            'Referer' : 'http://trafiroutes.wallonie.be/trafiroutes/flex/TrafiroutesViewer.swf',
-                            'Accept-Encoding' : 'gzip, deflate'
+                            'Referer': 'http://trafiroutes.wallonie.be/trafiroutes/pages/mobile/index_FR.html',
+                            'Accept': 'image/webp,*/*;q=0.8',
+                            'Accept-Encoding': 'gzip, deflate, sdch',
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.10 Safari/537.36'
                         }#,
                         #'auth' : HTTPBasicAuth('beroads', 'supermamy')
                     })
