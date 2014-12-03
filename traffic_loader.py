@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 __author__ = 'quentinkaiser'
-import sys,os,time,logging,requests,re,json
+import sys, os, time, logging, requests, re, json
 import hashlib
 import memcache
 import datetime
-from BeautifulSoup import BeautifulSoup
-import htmlentitydefs
+from bs4 import BeautifulSoup
+import html.entities
 import multiprocessing
-import MySQLdb
+import pymysql
 from optparse import OptionParser
 import configparser
 import calendar
@@ -28,18 +28,18 @@ def unescape(text):
             # character reference
             try:
                 if text[:3] == u"&#x":
-                    return unichr(int(text[3:-1], 16))
+                    return chr(int(text[3:-1], 16))
                 else:
-                    return unichr(int(text[2:-1]))
+                    return chr(int(text[2:-1]))
             except ValueError:
                 pass
         else:
             # named entity
             try:
-                text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
+                text = chr(html.entities.name2codepoint[text[1:-1]])
             except KeyError:
                 pass
-        return text # leave as is
+        return text  # leave as is
 
     return re.sub(u"&#?\w+;", fixup, text)
 
@@ -77,31 +77,31 @@ class Geocoder:
     over_query_retry = 0
 
     keywords = [
-            {
+        {
             "fr": u"à",
             "en": "in",
             "nl": "in",
             "de": "in"
         },
-            {
+        {
             "fr": "vers",
             "en": "to",
             "nl": "naar",
             "de": "nach"
         },
-            {
+        {
             "fr": "la",
             "en": "the",
             "nl": "de",
             "de": "der"
         },
-            {
+        {
             "fr": u"à hauteur de",
             "en": "ter hoogte van",
             "nl": "ter hoogte van",
             "de": "ter hoogte van"
         },
-            {
+        {
             "fr": "en direction de",
             "en": "richting",
             "nl": "richting",
@@ -110,7 +110,7 @@ class Geocoder:
     ]
 
 
-    def __init__(self,config):
+    def __init__(self, config):
         log_file_name = config['traffic']['log_geocoding']
 
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -149,7 +149,7 @@ class Geocoder:
             if coordinates is not None:
                 return coordinates
             else:
-                #gmap api geocoding tool
+                # gmap api geocoding tool
                 if tool == "gmap":
                     address += ", Belgium"
                     request_url = "https://maps.googleapis.com/maps/api/geocode/json?address=%s&sensor=false" % address
@@ -158,7 +158,7 @@ class Geocoder:
                     content = json.loads(response.content)
                     status = content['status']
                     self.logger.info("%s-> %s : %s \n" % (address, request_url, status))
-                    #successful geocode
+                    # successful geocode
                     if status == "OK":
                         self.over_query_retry = 0
                         coordinates = {
@@ -176,12 +176,12 @@ class Geocoder:
                         return {"lng": 0, "lat": 0}
 
 
-                #openstreetmap geocoding tool (Nominatim)
+                # openstreetmap geocoding tool (Nominatim)
                 elif tool == "osm":
-                    request_url = "http://nominatim.openstreetmap.org/search/be/%s/"\
+                    request_url = "http://nominatim.openstreetmap.org/search/be/%s/" \
                                   "?format=json&addressdetails=0&limit=1&countrycodes=be" % address
                     response = requests.get(request_url)
-                    content = json.loads(response.content)
+                    content = json.loads(response.content.decode())
                     self.logger.info("%s-> %s : %s \n" % (address, request_url, 1 if len(content) else 0))
 
                     if not len(content):
@@ -222,11 +222,11 @@ class Geocoder:
         if region == "federal" or region == "flanders":
             match = re.findall(r"(.*?) %s (-*(\w+)-*)+" % self.keywords[0][language], data)
 
-            if(len(match) == 1 and len(match[0]) >= 2):
+            if (len(match) == 1 and len(match[0]) >= 2):
                 data = match[0][1]
             else:
                 match = re.findall("(.*?) -> (\w*)", data)
-                if(len(match) == 1 and len(match[0]) == 2):
+                if (len(match) == 1 and len(match[0]) == 2):
                     data = match[0][1]
                 else:
                     match = re.findall("(\w*) %s (\w*)" % self.keywords[1][language], data)
@@ -250,7 +250,7 @@ class TrafficLoader:
             'nl': 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_NL.rss',
             'de': 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_DE.rss',
             'en': 'http://trafiroutes.wallonie.be/trafiroutes/Evenements_EN.rss',
-            },
+        },
         'flanders': {
             'fr': 'http://www.verkeerscentrum.be/rss/1%7C100%7C101%7C102%7C103%7C2%7C4%7C5-INC%7CLOS%7CINF%7CPEVT.xml',
             'nl': 'http://www.verkeerscentrum.be/rss/1%7C100%7C101%7C102%7C103%7C2%7C4%7C5-INC%7CLOS%7CINF%7CPEVT.xml',
@@ -285,7 +285,7 @@ class TrafficLoader:
                                               '+towgs84=-106.8686,52.2978,-103.7329,-0.3366,0.457,-1.8422,-1.2747 '
                                               '+units=m +no_defs')
 
-        #set a custom formatter
+        # set a custom formatter
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger("traffic")
         self.logger.setLevel(logging.INFO)
@@ -322,14 +322,14 @@ class TrafficLoader:
         traffic_events_queue = multiprocessing.Queue()
 
         sql_storing = multiprocessing.Process(name='data_storing',
-            target=self.store_traffic,
-            args=(traffic_events_queue,)
+                                              target=self.store_traffic,
+                                              args=(traffic_events_queue,)
         )
         sql_storing.start()
 
         traffic_loader = multiprocessing.Process(name='traffic_loader',
-            target=self.load_traffic,
-            args=(traffic_raw_data_queue,)
+                                                 target=self.load_traffic,
+                                                 args=(traffic_raw_data_queue,)
         )
         traffic_loader.start()
 
@@ -346,8 +346,8 @@ class TrafficLoader:
                         self.logger.debug("Got data from %s - %s" % (raw_data['region'], raw_data['language']))
                         parsing_processes.append(
                             multiprocessing.Process(name='%s - %s' % (raw_data['region'], raw_data['language']),
-                                target=self.parse_traffic,
-                                args=(raw_data, traffic_events_queue,)
+                                                    target=self.parse_traffic,
+                                                    args=(raw_data, traffic_events_queue,)
                             ))
                         parsing_processes[len(parsing_processes) - 1].start()
             time.sleep(self.sleep_time)
@@ -381,13 +381,13 @@ class TrafficLoader:
                             '%a, %d %b %Y %H:%M:%S %Z'
                         ).utctimetuple())
 
-                        if last_modification_timestamp > time.time()-(self.sleep_time+60):
+                        if last_modification_timestamp > time.time() - (self.sleep_time + 60):
                             out_queue.put({'region': region, 'language': language, 'content': r.content})
                             self.logger.info("Loaded traffic from %s in %s on %s" %
-                                         (region, language, self.urls[region][language]))
+                                             (region, language, self.urls[region][language]))
                         else:
                             out_queue.put({'region': region, 'language': language, 'content': None})
-                            self.logger.info("Nothing has changed on %s"%(self.urls[region][language]))
+                            self.logger.info("Nothing has changed on %s" % (self.urls[region][language]))
                     else:
                         out_queue.put({'region': region, 'language': language, 'content': r.content})
                         self.logger.info("Loaded traffic from %s in %s on %s" %
@@ -411,7 +411,7 @@ class TrafficLoader:
         con = None
         cursor = None
         try:
-            con = MySQLdb.connect(
+            con = pymysql.connect(
                 str(self.config['mysql']['host']),
                 str(self.config['mysql']['username']),
                 str(self.config['mysql']['password']),
@@ -428,19 +428,19 @@ class TrafficLoader:
                         counter += 1
                     else:
                         self.logger.info("Got item %s" % item)
-                        #we do this kind of hashing because we don't have a real time value for brussels events so everytime
-                        #we load them we could have different hashes for the same event if we hash the time
-                        item['hash'] = hashlib.md5("%s+%s+%s+%s+%s+%s+%s+%s" %
-                                                   (
-                                                       item['region'],
-                                                       item['language'],
-                                                       item['location'],
-                                                       item['message'],
-                                                       item['category'],
-                                                       item['source'],
-                                                       item['lat'],
-                                                        item['lng']
-                                                    )).hexdigest()
+                        # we do this kind of hashing because we don't have a real time value for brussels events so everytime
+                        # we load them we could have different hashes for the same event if we hash the time
+                        formattedString = "%s+%s+%s+%s+%s+%s+%s+%s" % (
+                            item['region'],
+                            item['language'],
+                            item['location'],
+                            item['message'],
+                            item['category'],
+                            item['source'],
+                            item['lat'],
+                            item['lng']
+                        )
+                        item['hash'] = hashlib.md5(formattedString.encode("utf-8")).hexdigest()
                         cursor = con.cursor()
                         cursor.execute("SELECT * FROM trafic WHERE hash = '%s'" % item['hash'])
                         row = cursor.fetchone()
@@ -449,52 +449,54 @@ class TrafficLoader:
                                                     (region, language, location, message, category, source, hash, lat, lng, time, insert_time, active) \
                                                     VALUES \
                                                      (\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\", %f, %f, %d, %d, 1)" % (
-                                con.escape_string(item['region']),
-                                con.escape_string(item['language']),
-                                con.escape_string(item['location']),
-                                con.escape_string(item['message']),
-                                con.escape_string(item['category']),
-                                con.escape_string(item['source']),
-                                con.escape_string(item['hash']),
-                                float(item['lat']),
-                                float(item['lng']),
-                                time.mktime(item['time'].timetuple()),
-                                int(time.time())
-                                )
+                            con.escape_string(item['region']),
+                            con.escape_string(item['language']),
+                            con.escape_string(item['location']),
+                            con.escape_string(item['message']),
+                            con.escape_string(item['category']),
+                            con.escape_string(item['source']),
+                            con.escape_string(item['hash']),
+                            float(item['lat']),
+                            float(item['lng']),
+                            time.mktime(item['time'].timetuple()),
+                            int(time.time())
+                        )
                             cursor.execute(query)
                         else:
                             cursor.execute("UPDATE trafic SET active = 1 WHERE hash = '%s'" % item['hash'])
-                        cursor.close()
+            cursor.close()
             con.commit()
             con.close()
+
         except KeyboardInterrupt as e:
             if con:
                 con.rollback()
-                if cursor:
-                    cursor.close()
                 con.close()
+            if cursor:
+                cursor.close()
             sys.exit(2)
-        except MySQLdb.Error as e:
+
+        except pymysql.Error as e:
             self.logger.exception(e)
             if con:
                 con.rollback()
-                if cursor:
-                    cursor.close()
                 con.close()
+            if cursor:
+                cursor.close()
             sys.exit(2)
         except Exception as e:
             self.logger.exception(e)
-            if con:
-                con.close()
+        if con:
+            con.close()
 
 
     def parse_traffic(self, raw_data, out_queue):
         """
-            This function read website's raw content from the raw_data_queue, parse it and send out trafic items to
-            out_queue.
-            @param raw_data : a multiprocessing Queue containing website's raw content provided by trafic_loader.
-            @param out_queue : a multiprocessing Queue where we put trafic items that we have parsed.
-        """
+                This function read website's raw content from the raw_data_queue, parse it and send out trafic items to
+                out_queue.
+                @param raw_data : a multiprocessing Queue containing website's raw content provided by trafic_loader.
+                @param out_queue : a multiprocessing Queue where we put trafic items that we have parsed.
+            """
 
         try:
             geocoder = Geocoder(self.config)
@@ -516,7 +518,7 @@ class TrafficLoader:
                     page = requests.get(url)
                     if page.status_code != 200:
                         raise Exception("Content unavailable on %s" % url)
-                    data = json.loads(page.content)
+                    data = json.loads(page.content.decode())
                     soup = BeautifulSoup(traffic)
                     items = soup.findAll('item')
                     for item in items:
@@ -528,12 +530,12 @@ class TrafficLoader:
                             'time': self.parse_time(region, item.pubdate.string),
                             'message': item.description.string,
                             'location': item.title.string,
-                            'lat' : 0,
-                            'lng' : 0
-                            }
+                            'lat': 0,
+                            'lng': 0
+                        }
 
                         evt = item.guid.string.replace('http://trafiroutes.wallonie.be/trafiroutes/maptempsreel/?v=EVT',
-                            '')
+                                                       '')
                         for x in data:
                             if x['idEvenement'] == evt:
                                 node['lat'] = x['lat']
@@ -579,12 +581,13 @@ class TrafficLoader:
 
             elif region == "brussels":
                 import time
+
                 try:
-                    json_tab = json.loads(traffic)
+                    json_tab = json.loads(traffic.decode())
                     for element in json_tab['features']:
                         coordinates = element['geometry']['coordinates']
                         lng, lat = pyproj.transform(self.lambert_projection, self.wgs84_projection,
-                            coordinates[0], coordinates[1])
+                                                    coordinates[0], coordinates[1])
                         item = {
                             'region': region,
                             'language': language,
@@ -606,7 +609,7 @@ class TrafficLoader:
                 try:
                     soup = BeautifulSoup(traffic)
                     locations = soup.findAll(name='td',
-                        attrs={'class': 'textehome', 'valign': 'middle', 'width': '475'})
+                                             attrs={'class': 'textehome', 'valign': 'middle', 'width': '475'})
 
                     dates = soup.findAll(name='td', attrs={'class': 'textehome', 'valign': 'middle', 'width': '90'})
                     messages = soup.findAll(name='font', attrs={'class': 'textehome'})
@@ -621,7 +624,6 @@ class TrafficLoader:
 
                         location = unescape(re.sub(r'<[^>]*>', '', location.text))
 
-
                         if "FILES - TRAVAUX" not in location and "FILES - WERKEN" not in location:
                             coordinates = geocoder.geocodeData(location, region, language)
                             item = {
@@ -635,7 +637,7 @@ class TrafficLoader:
                                 'lng': coordinates['lng']
                             }
 
-                            #TODO : dutch ?
+                            # TODO : dutch ?
                             if "travaux" in message or "chantier" in message:
                                 item['category'] = "works"
                             elif "accident" in message or "incident" in message:
@@ -659,19 +661,19 @@ class TrafficLoader:
 
     def parse_time(self, region, content):
         """
-            A simple time parser depending on region and language.
-        """
+                A simple time parser depending on region and language.
+            """
 
         months = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sept": 9,
                   "oct": 10, "nov": 11, "dec": 12}
 
         if region == "wallonia":
-            #sam., 10 sept. 2011 23:57:43 +0200
+            # sam., 10 sept. 2011 23:57:43 +0200
             match = re.findall(r'(\w+), (\d+) (\w+) (\d+) ((\d\d):(\d\d):(\d\d)) \+(\d+)', content)
 
             return datetime.datetime(int(match[0][3]), months[str(match[0][2]).lower()], int(match[0][1]),
-                int(match[0][5]),
-                int(match[0][6]), int(match[0][7]))
+                                     int(match[0][5]),
+                                     int(match[0][6]), int(match[0][7]))
 
         elif region == "flanders":
             match = re.findall(r"([0-2][0-9]):([0-5][0-9])<br>(\d\d)-(\d\d)-(\d\d)", content)
@@ -686,23 +688,24 @@ class TrafficLoader:
         elif region == "federal":
             match = re.findall("(\d\d\d\d)-(\d\d)-(\d\d) ([0-2][0-9]):([0-5][0-9]):([0-5][0-9])", content)
             return datetime.datetime(int(match[0][0]), int(match[0][1]), int(match[0][2]), int(match[0][3]),
-                int(match[0][4]), int(match[0][5]))
+                                     int(match[0][4]), int(match[0][5]))
         else:
             return time.time()
 
 
 if __name__ == "__main__":
     parser = OptionParser()
-    parser.add_option("-c", "--config", type="string", default="%s/config.ini" % os.path.dirname(os.path.abspath(__file__)), help="configuration file")
+    parser.add_option("-c", "--config", type="string",
+                      default="%s/config.ini" % os.path.dirname(os.path.abspath(__file__)), help="configuration file")
     (options, args) = parser.parse_args()
 
     config = configparser.ConfigParser()
     config.read(options.config)
 
     while True:
-    #this is a trick to be "error resilient", in fact the majority of errors that
-    #we got is because our sources are not available or their server are too slow
-    #by enabling this we don't stop the process on error and keep running ;-)
+        # this is a trick to be "error resilient", in fact the majority of errors that
+        # we got is because our sources are not available or their server are too slow
+        #by enabling this we don't stop the process on error and keep running ;-)
         try:
             traffic_loader = TrafficLoader(config)
             traffic_loader.run()

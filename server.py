@@ -14,7 +14,7 @@ from optparse import OptionParser
 import logging
 import os
 import requests
-import torndb
+import tornado_mysql
 import time
 import base64
 import hashlib
@@ -23,18 +23,17 @@ import numpy as np
 from math import radians, cos, sin, asin, sqrt, atan2
 import uuid
 
-from gcm import *
+from gcm import GCM
 from apns_clerk import *
 import configparser
 
-def require_basic_auth(handler_class):
 
+def require_basic_auth(handler_class):
     def wrap_execute(handler_execute):
 
         def require_basic_auth(handler, kwargs):
             auth_header = handler.request.headers.get('Authorization')
             if auth_header is None or not auth_header.startswith('Basic '):
-
                 handler.set_status(401)
                 handler.set_header('WWW-Authenticate', 'Basic realm=Restricted')
                 handler._transforms = []
@@ -56,8 +55,10 @@ def require_basic_auth(handler_class):
     handler_class._execute = wrap_execute(handler_class._execute)
     return handler_class
 
+
 PRECISION = 10
 R = 6367
+
 
 def haversine(a, b):
     """
@@ -124,14 +125,13 @@ def nearest_point_segment(a, b, c):
     return a if haversine(a, c) < haversine(b, c) else c
 
 
-
 class Application(tornado.web.Application):
     def __init__(self, config):
 
 
         settings = dict(
             cookie_secret="5725af95ef74805b753cd3689bb3393681e02ce6",
-            static_path="%s/static"%os.path.dirname(__file__),
+            static_path=os.path.join(os.path.dirname(__file__), "static"),
             xsrf_cookies=False,
         )
 
@@ -162,12 +162,14 @@ class Application(tornado.web.Application):
         self.gcm = GCM(self.config['push']['gcm_api_key'])
 
         session = Session()
-        con = session.get_connection("push_production", cert_file='%s/%s'%(os.path.dirname(os.path.abspath(__file__)) , self.config['push']['apns_certificate']),
-            key_file='%s/%s'%(os.path.dirname(os.path.abspath(__file__)) , self.config['push']['apns_key']),
-            passphrase=str(self.config['push']['apns_passphrase']))
+        con = session.get_connection("push_production", cert_file='%s/%s' % (
+            os.path.dirname(os.path.abspath(__file__)), self.config['push']['apns_certificate']),
+                                     key_file='%s/%s' % (
+                                         os.path.dirname(os.path.abspath(__file__)), self.config['push']['apns_key']),
+                                     passphrase=str(self.config['push']['apns_passphrase']))
         self.apns = APNs(con)
         # Have one global connection to the TDT DB across all handlers
-        self.db = torndb.Connection(
+        self.db = tornado_mysql.connect(
             host=self.config['mysql']['host'],
             database=self.config['mysql']['database'],
             user=self.config['mysql']['username'],
@@ -190,13 +192,11 @@ class Application(tornado.web.Application):
         self.logger.addHandler(error_file)
         error_file.close()
 
-
-
         self.cache = memcache.Client(
             ['%s:%d' % (
                 self.config['memcached']['ip'],
                 int(self.config['memcached']['port'])
-                )],
+            )],
             debug=True
         )
 
@@ -218,7 +218,7 @@ class Application(tornado.web.Application):
 
     @tornado.gen.engine
     def traffic_differ(self, language, callback):
-        #traffic differ with mysql stored events (md5 hash)
+        # traffic differ with mysql stored events (md5 hash)
         try:
             rows = self.db.query("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d" %
                                  (language, self.last_insert_time))
@@ -234,14 +234,13 @@ class Application(tornado.web.Application):
         """
         self.logger.info("Notifying subscribers from channel %s" % language)
 
-        
-	for subscriber in self.cache.get(str('subscribers.web.%s' % language)) or []:
+        for subscriber in self.cache.get(str('subscribers.web.%s' % language)) or []:
             for event in events:
                 distance = int(haversine(subscriber.coords,
-                        {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
+                                         {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
                 if distance < int(subscriber.area):
                     event['distance'] = distance
-                    #PUBLISH
+                    # PUBLISH
                     message = {
                         "uuid": subscriber.uuid,
                         "code": 3,
@@ -261,7 +260,7 @@ class Application(tornado.web.Application):
                 if 'points' in subscriber:
                     current_point = subscriber['points'][0]
                     for i in range(1, len(subscriber['points'])):
-                        #compute distance between a point (the event coordinates) and
+                        # compute distance between a point (the event coordinates) and
                         # a line delimited by two points from the points array
                         next_point = subscriber['points'][i]
                         #first we need to get coordinates in cartesian
@@ -271,7 +270,7 @@ class Application(tornado.web.Application):
                 else:
                     distance = int(
                         haversine({'latitude': subscriber['coords']['lat'], 'longitude': subscriber['coords']['lng']},
-                                {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
+                                  {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
 
                 if distance < int(subscriber['area']):
                     event['distance'] = distance
@@ -279,7 +278,8 @@ class Application(tornado.web.Application):
                         registration_ids=[subscriber['registration_id']], data=event,
                         collapse_key='beroads', delay_while_idle=True, time_to_live=3600
                     )
-                    self.logger.info("Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
+                    self.logger.info(
+                        "Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
                     # Handling errors
                     if 'errors' in response:
                         for error, reg_ids in response['errors'].items():
@@ -287,7 +287,7 @@ class Application(tornado.web.Application):
                             if error is 'NotRegistered':
                                 # Remove reg_ids from database
                                 self.logger.error("Device %s not registered, removing from channel %s" %
-                                             (subscriber["registration_id"], language))
+                                                  (subscriber["registration_id"], language))
                                 subscribers.delete(subscriber)
                                 self.cache.set(str('subscribers.gcm.%s' % language), subscribers)
                     if 'canonical' in response:
@@ -307,7 +307,7 @@ class Application(tornado.web.Application):
         for subscriber in subscribers:
             for event in events:
                 distance = int(haversine(subscriber['coords'],
-                        {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
+                                         {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
                 if distance < 10:
                     event['distance'] = distance
 
@@ -458,7 +458,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
 
         try:
             parsed = tornado.escape.json_decode(message)
-            #SUBSCRIBE OR UPDATE
+            # SUBSCRIBE OR UPDATE
             if int(parsed['code']) == 1:
                 TrafficSocketHandler.test_message(parsed)
 
@@ -536,6 +536,7 @@ class BaseHandler(tornado.web.RequestHandler):
         """
         """
         return self.application.logger
+
     @property
     def gcm(self):
         """
@@ -562,13 +563,12 @@ class BaseHandler(tornado.web.RequestHandler):
 
         """
         authenticated = self.db.query("SELECT * FROM user WHERE username=%s AND password = UNHEX(%s)",
-            username,
-            hashlib.sha1(password).hexdigest())
+                                      username,
+                                      hashlib.sha1(password).hexdigest())
         return authenticated
 
 
 class GoogleCloudMessagingHandler(BaseHandler):
-
     def post(self, *args, **kwargs):
         """
 
@@ -576,7 +576,7 @@ class GoogleCloudMessagingHandler(BaseHandler):
         try:
             self.logger.info("Request received from android device : " + self.request.body)
             data = tornado.escape.json_decode(str(self.request.body))
-            if(data['registration_id'] is None or not len(data['registration_id'])):
+            if (data['registration_id'] is None or not len(data['registration_id'])):
                 raise AttributeError("registration_id is not set")
 
             if data['language'] is None:
@@ -634,11 +634,11 @@ class AppleSendNotificationHandler(BaseHandler):
             try:
                 payload = Payload(alert=message, sound="default", badge=5)
             except PayloadTooLargeError as e:
-                #if the payload is too large, we chomp the alert content
+                # if the payload is too large, we chomp the alert content
                 logging.exception(e)
                 json_overhead_bytes = len(payload.json()) - 1
                 payload = Payload(alert=message[:(apns.MAX_PAYLOAD_LENGTH - json_overhead_bytes)],
-                    sound="default", badge=5)
+                                  sound="default", badge=5)
 
             self.apns.gateway_server.send_notification(device_token, payload)
 
@@ -784,7 +784,7 @@ class DeploymentHandler(BaseHandler):
 
 @require_basic_auth
 class DashboardHandler(BaseHandler):
-    #for monitoring purpose
+    # for monitoring purpose
     def head(self, basicauth_user, basicauth_pass):
         if self.auth(basicauth_user, basicauth_pass):
             return
@@ -800,22 +800,22 @@ class DashboardHandler(BaseHandler):
             self.set_header("Content-Type", "text/html; charset=UTF-8")
 
             sources = [
-                    {
+                {
                     'name': 'Centre Perex',
                     'url': 'http://trafiroutes.wallonie.be/trafiroutes/maptempsreel/',
                     'status': 0
                 },
-                    {
+                {
                     'name': 'Mobiris',
                     'url': 'http://www.bruxellesmobilite.irisnet.be',
                     'status': 0
                 },
-                    {
+                {
                     'name': 'Verkeers Centrum',
                     'url': 'http://www.verkeerscentrum.be',
                     'status': 0
                 },
-                    {
+                {
                     'name': 'Police fédérale',
                     'url': 'http://www.fedpol.be',
                     'status': 0
@@ -863,10 +863,10 @@ class DashboardHandler(BaseHandler):
 
             apple_total = sum(len(v) for v in apple_subscribers.itervalues())
             self.render("templates/index.html", username=basicauth_user, sources=sources,
-                traffic_feed_channels=['fr', 'nl', 'de', 'en'], google_subscribers=google_subscribers,
-                events_count=events_count, apple_subscribers=apple_subscribers, apple_total=apple_total,
-                web_subscribers=web_subscribers,
-                packages=packages)
+                        traffic_feed_channels=['fr', 'nl', 'de', 'en'], google_subscribers=google_subscribers,
+                        events_count=events_count, apple_subscribers=apple_subscribers, apple_total=apple_total,
+                        web_subscribers=web_subscribers,
+                        packages=packages)
         else:
             self.send_error(403)
 
@@ -958,7 +958,7 @@ class AnalyticsOSHandler(BaseHandler):
                     AND LOWER(`user_agent`) NOT LIKE "%%python%%"
                     AND LOWER(`user_agent`) NOT LIKE "%%wget%%" AND time >= %s AND
               time <= %s AND package LIKE %s AND resource LIKE %s GROUP BY os ORDER BY time DESC""",
-            int(start_date), int(end_date), str(package), str(resource))
+                             int(start_date), int(end_date), str(package), str(resource))
         data = []
         try:
             for row in rows:
@@ -967,7 +967,7 @@ class AnalyticsOSHandler(BaseHandler):
                     'total': int(row['total'])
                 })
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1017,7 +1017,7 @@ class AnalyticsBrowserHandler(BaseHandler):
                    AND time >= %s AND time <= %s AND package LIKE %s AND resource LIKE %s
                   GROUP BY browser
                   ORDER BY time DESC""",
-            int(start_date), int(end_date), package, resource)
+                             int(start_date), int(end_date), package, resource)
 
         data = []
         try:
@@ -1027,7 +1027,7 @@ class AnalyticsBrowserHandler(BaseHandler):
                     'total': int(row['total'])
                 })
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1105,7 +1105,7 @@ class AnalyticsCoordinateHandler(BaseHandler):
                 except ValueError:
                     continue
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1174,7 +1174,7 @@ class AnalyticsHitHandler(BaseHandler):
                     'total': int(row['hits'])
                 })
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1233,7 +1233,7 @@ class AnalyticsNotificationsHandler(BaseHandler):
                     'total': int(row['notifications'])
                 })
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1292,7 +1292,7 @@ class AnalyticsLanguageHandler(BaseHandler):
                     'total': int(row['hits'])
                 })
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1350,7 +1350,7 @@ class AnalyticsDeviceHandler(BaseHandler):
                     'total': int(row['total'])
                 })
             callback(data)
-        except Exception, e:
+        except Exception as e:
             logging.error(e)
             callback(data)
         return
@@ -1360,7 +1360,9 @@ if __name__ == "__main__":
 
     try:
         parser = OptionParser()
-        parser.add_option("-c", "--config", type="string", default="%s/config.ini"%os.path.dirname(os.path.abspath(__file__)), help="configuration file")
+        parser.add_option("-c", "--config", type="string",
+                          default="%s/config.ini" % os.path.dirname(os.path.abspath(__file__)),
+                          help="configuration file")
         (options, args) = parser.parse_args()
 
         config = configparser.ConfigParser()
@@ -1374,13 +1376,13 @@ if __name__ == "__main__":
 
         tornado.ioloop.PeriodicCallback(
             app.load_traffic,
-            int(config['server']['update_time'])*1000,
+            int(config['server']['update_time']) * 1000,
             io_loop=main_loop
         ).start()
 
         feedback_callback = tornado.ioloop.PeriodicCallback(
             app.feedback,
-            int(config['server']['update_time'])*1000
+            int(config['server']['update_time']) * 1000
         ).start()
 
         main_loop.start()

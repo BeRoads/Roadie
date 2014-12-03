@@ -3,7 +3,7 @@ __author__ = 'quentinkaiser'
 import sys, os, time, logging, requests, re, json
 from optparse import OptionParser
 import multiprocessing
-import MySQLdb
+import pymysql
 import datetime
 import calendar
 import configparser
@@ -103,7 +103,7 @@ class WebcamsLoader:
 
         while 1:
             try:
-                con = MySQLdb.connect(
+                con = pymysql.connect(
                     str(self.config['mysql']['host']),
                     str(self.config['mysql']['username']),
                     str(self.config['mysql']['password']),
