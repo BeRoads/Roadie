@@ -24,7 +24,7 @@ pycparser==2.10
 pyproj==1.9.3
 git+https://github.com/ValCapri/python-gcm.git@python3#egg=python-gcm
 python3-memcached==1.51
-python-twitter==2.0
+twitter==1.15.0
 requests==2.4.3
 requests-oauthlib==0.4.2
 simplejson==3.6.5

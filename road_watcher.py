@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 __author__ = 'quentinkaiser'
-import twitter
-import MySQLdb
+import pymysql
 from optparse import OptionParser
+import os
 import time
 import logging
 import requests
@@ -10,7 +10,7 @@ from requests_oauthlib import OAuth1
 import json
 import sys
 import configparser
-
+from twitter import *
 
 class RoadWatcher:
     """
@@ -48,15 +48,13 @@ class RoadWatcher:
         self.twitter_bots = {}
         try:
             for language in ['fr', 'nl', 'en', 'de']:
-                self.twitter_bots[language] = twitter.Api(
-                    consumer_key=self.config['twitter']['%s_consumer_key'%language],
-                    consumer_secret=self.config['twitter']['%s_consumer_secret'%language],
-                    access_token_key=self.config['twitter']['%s_access_token_key'%language],
-                    access_token_secret=self.config['twitter']['%s_access_token_secret'%language]
+                Twitter(auth=OAuth(self.config['twitter']['%s_access_token_key'%language],
+                                   self.config['twitter']['%s_access_token_secret'%language],
+                                   self.config['twitter']['%s_consumer_key'%language],
+                                   self.config['twitter']['%s_consumer_secret'%language]
+                                  )
                 )
 
-                if self.twitter_bots[language].VerifyCredentials() is None:
-                    raise Exception("Twitter bot credentials are wroooong ! ")
         except Exception as e:
             self.logger.exception(e)
             sys.exit(0)
@@ -85,27 +83,23 @@ class RoadWatcher:
                 share_url = "http://beroads.com/event/%s" % event['id']
                 place_id = None
 
-                auth = OAuth1(
-                    self.config['twitter']['%s_consumer_key'%language],
-                    self.config['twitter']['%s_consumer_secret'%language],
-                    self.config['twitter']['%s_access_token_key'%language],
-                    self.config['twitter']['%s_access_token_key'%language]
-                )
-
                 payload = {'lat': event['lat'], 'long': event['lng']}
-                r = requests.get('https://api.twitter.com/1.1/geo/search.json', params=payload, auth=auth)
+                self.twitter_bots[language].search.tweets(q=payload)
 
                 if r.status_code == 200:
-                    result = json.loads(r.content)
+                    result = json.loads(r.content.decode())
                     if len(result['result']['places']):
                         place_id = result['result']['places'][0]['id']
+                        self.logger.info("Place id : %s " % place_id)
+                else:
+                    self.logger.info("Status code is not 200, it is %s",r.status_code)
 
                 status = "%s ... %s" % (
                     event['location'][0:(140 - len(share_url) - 4)], share_url)
 
                 self.logger.info("Publishing status : %s on Twitter..." % status)
 
-                self.twitter_bots[language].PostUpdate(status=status,
+                self.twitter_bots[language].statuses.update(status=status,
                     latitude=event['lat'],
                     longitude=event['lng'],
                     place_id=place_id,
@@ -122,14 +116,14 @@ class RoadWatcher:
         con = None
         cursor = None
         try:
-            con = MySQLdb.connect(
+            con = pymysql.connect(
                 str(self.config['mysql']['host']),
                 str(self.config['mysql']['username']),
                 str(self.config['mysql']['password']),
                 str(self.config['mysql']['database']),
                 charset='utf8'
             )
-            cursor = con.cursor(MySQLdb.cursors.DictCursor)
+            cursor = con.cursor(pymysql.cursors.DictCursor)
             cursor.execute(
                 "SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d" % (language, self.last_fetch_time))
 
@@ -140,7 +134,7 @@ class RoadWatcher:
                     cursor.close()
                 con.close()
             sys.exit(2)
-        except MySQLdb.Error as e:
+        except pymysql.Error as e:
             self.logger.exception(e)
             if con:
                 if cursor:
@@ -155,7 +149,7 @@ class RoadWatcher:
 
 if __name__ == "__main__":
     parser = OptionParser()
-    parser.add_option("-c", "--config", type="string", default="config.ini", help="configuration file")
+    parser.add_option("-c", "--config", type="string",default="%s/config.ini" % os.path.dirname(os.path.abspath(__file__)), help="configuration file")
     (options, args) = parser.parse_args()
 
     config = configparser.ConfigParser()
@@ -167,6 +161,7 @@ if __name__ == "__main__":
     #by enabling this we don't stop the process on error and keep running ;-)
         try:
             road_watcher = RoadWatcher(config)
+            logging.info("Running road_watcher...")
             road_watcher.run()
         except KeyboardInterrupt as e:
             logging.exception(e)

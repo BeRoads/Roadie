@@ -562,7 +562,7 @@ class BaseHandler(tornado.web.RequestHandler):
         """
 
         """
-        authenticated = self.db.query("SELECT * FROM user WHERE username=%s AND password = UNHEX(%s)",
+        authenticated = self.db.query("SELECT * FROM user2 WHERE username=%s AND password = %s",
                                       username,
                                       hashlib.sha1(password).hexdigest())
         return authenticated
