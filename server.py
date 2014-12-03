@@ -364,10 +364,12 @@ class Application(tornado.web.Application):
             for language in languages:
                 self.logger.info("Fetching %s traffic ..." % language)
                 new_events = yield tornado.gen.Task(self.traffic_differ, language)
-                self.logger.info("Got %d new events" % len(new_events))
-                if new_events is not None:
+                if not new_events:
+                    self.logger.info("Got 0 new event")
+                else:
+                    self.logger.info("Got %d new events" % len(new_events))
                     published = yield tornado.gen.Task(self.notify_subscribers, language, new_events)
-            self.last_insert_time = int(time.time())
+                    self.last_insert_time = int(time.time())
         except Exception as e:
             self.logger.exception(e)
 
