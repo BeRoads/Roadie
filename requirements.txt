@@ -31,5 +31,5 @@ simplejson==3.6.5
 six==1.8.0
 git+https://github.com/Supervisor/supervisor.git#egg=supervisor
 tornado==4.0.2
-Tornado-MySQL==0.2
+git+https://github.com/ValCapri/Tornado-MySQL.git
 zope.interface==4.1.1

@@ -157,12 +157,12 @@
                         </tr>
                         </thead>
                         <tbody>
-                        {% for i in range(0, len(web_subscribers)) %}
+                        {% for key, value in web_subscribers.items() %}
 
                         <tr>
-                            <td>{{ web_subscribers.keys()[i].upper()}}</td>
-                            <td>{{ events_count[i]}}</td>
-                            <td>{{ len(web_subscribers.values()[i]) }}</td>
+                            <td>{{ key.upper()}}</td>
+                            <td>{{ events_count}}</td>
+                            <td>{{ len(value) }}</td>
                         </tr>
                         {% end %}
                         </tbody>
@@ -188,12 +188,12 @@
                         </tr>
                         </thead>
                         <tbody>
-                        {% for i in range(0, len(google_subscribers)) %}
+                        {% for key, value in google_subscribers.items() %}
 
                         <tr>
-                            <td>{{ google_subscribers.keys()[i].upper()}}</td>
-                            <td>{{ events_count[i]}}</td>
-                            <td>{{ len(google_subscribers.values()[i]) }}</td>
+                            <td>{{ key.upper() }}</td>
+                            <td>{{ events_count}}</td>
+                            <td>{{ len(value) }}</td>
                         </tr>
                         {% end %}
                         </tbody>
@@ -219,12 +219,12 @@
                         </tr>
                         </thead>
                         <tbody>
-                        {% for i in range(0, len(apple_subscribers)) %}
+                        {% for key, value in apple_subscribers.items() %}
 
                         <tr>
-                            <td>{{ apple_subscribers.keys()[i].upper()}}</td>
-                            <td>{{ events_count[i]}}</td>
-                            <td>{{ len(apple_subscribers.values()[i]) }}</td>
+                            <td>{{ key.upper() }}</td>
+                            <td>{{ events_count}}</td>
+                            <td>{{ len(value) }}</td>
                         </tr>
                         {% end %}
                         </tbody>
