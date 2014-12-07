@@ -131,7 +131,7 @@ class WebcamsLoader:
                     cursor.close()
                 con.close()
                 break
-            except MySQLdb.Error as e:
+            except pymysql.Error as e:
                 self.logger.exception(e)
                 if con:
                     con.rollback()
@@ -163,21 +163,24 @@ class WebcamsLoader:
             if 'last-modified' in item and item['last-modified'] < now - 60 * 60:
                 return False
 
-            with open('%ssamples/unavailable_wallonia.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
+            with open('%ssamples/unavailable_wallonia.jpg'%self.webcams_directory, "rb") as f1, \
+                    open(item['output_url'], "rb") as f2:
                 c1 = f1.read()
                 c2 = f2.read()
                 similarity = float(sum([a == b for a, b in zip(c1, c2)])) / len(c1)
                 if similarity > 0.8:
                     return False
 
-            with open('%ssamples/unavailable_flanders.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
+            with open('%ssamples/unavailable_flanders.jpg'%self.webcams_directory, "rb") as f1, \
+                    open(item['output_url'], "rb") as f2:
                 c1 = f1.read()
                 c2 = f2.read()
                 similarity = float(sum([a == b for a, b in zip(c1, c2)])) / len(c1)
                 if similarity > 0.18:
                     return False
 
-            with open('%ssamples/blue.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
+            with open('%ssamples/blue.jpg'%self.webcams_directory, "rb") as f1, \
+                    open(item['output_url'], "rb") as f2:
                 c1 = f1.read()
                 c2 = f2.read()
                 similarity = float(sum([a == b for a, b in zip(c1, c2)])) / len(c1)
@@ -224,7 +227,7 @@ class WebcamsLoader:
 
                 for i in range(0, 51):
                     out_queue.put({
-			            'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % (i),
+                        'input_url': 'http://trafiroutes.wallonie.be/images_uploaded/cameras/image%d.jpg' % i,
                         'output_url': '%swallonia/camera_%d.jpg' % (self.webcams_directory, i),
                         'headers': {
                             'Referer': 'http://trafiroutes.wallonie.be/trafiroutes/pages/mobile/index_FR.html',
@@ -236,7 +239,8 @@ class WebcamsLoader:
                     })
                 reg = re.compile(r'src="/camera-images/(\w+\-*\w+.jpg)')
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/antwerpen")
-                links = reg.findall(page.content)
+                contentString = page.content.decode()
+                links = reg.findall(contentString)
 
                 for i in range(0, len(links)):
                     out_queue.put({
@@ -251,7 +255,8 @@ class WebcamsLoader:
                     })
 
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/gent")
-                links = reg.findall(page.content)
+                contentString = page.content.decode()
+                links = reg.findall(contentString)
 
                 for i in range(0, len(links)):
                     out_queue.put({
@@ -268,7 +273,8 @@ class WebcamsLoader:
 
                 #brussels
                 page = requests.get("http://www.verkeerscentrum.be/verkeersinfo/camerabeelden/brussel")
-                links = reg.findall(page.content)
+                contentString = page.content.decode()
+                links = reg.findall(contentString)
                 for i in range(0, len(links)):
                     out_queue.put({
                         'input_url': 'http://www.verkeerscentrum.be/camera-images/%s' % (links[i]),
@@ -282,7 +288,8 @@ class WebcamsLoader:
                     })
 
                 page = requests.get("http://www.bruxellesmobilite.irisnet.be/cameras/json/fr/")
-                jsonpage = json.loads(page.content)
+                contentString = page.content.decode()
+                jsonpage = json.loads(contentString)
                 for i in range(0, len(jsonpage['features'])):
                     out_queue.put({
                         'input_url': 'http://www.bruxellesmobilite.irisnet.be%s' % (
