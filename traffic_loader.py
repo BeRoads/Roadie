@@ -550,6 +550,7 @@ class TrafficLoader:
                 categories = {
                     "ongevallen": "accident",
                     "files": "traffic jam",
+                    "Filelengte": "traffic jam",
                     "wegeninfo": "info",
                     "werkzaamheden": "works"
                 }
