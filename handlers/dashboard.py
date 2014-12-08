@@ -67,11 +67,6 @@ class DashboardHandler(BaseHandler):
                 for r_row in all_ressources:
                     packages[package_name].append(str(r_row[0]))
 
-            events_count = []
-            for language in ['fr', 'nl', 'de', 'en']:
-                event_count = yield self.db.execute("SELECT * FROM trafic WHERE language = \"%s\" AND time >= CURRENT_DATE" % (language))
-                events_count.append(len(event_count.fetchone()))
-
             google_subscribers = dict(
                 fr=self.cache.get('subscribers.gcm.fr'),
                 nl=self.cache.get('subscribers.gcm.nl'),
@@ -94,7 +89,7 @@ class DashboardHandler(BaseHandler):
             apple_total = sum(len(v) for v in apple_subscribers.values())
             self.render("../templates/index.html", username=basicauth_user, sources=sources,
                         traffic_feed_channels=['fr', 'nl', 'de', 'en'], google_subscribers=google_subscribers,
-                        events_count=events_count, apple_subscribers=apple_subscribers, apple_total=apple_total,
+                        apple_subscribers=apple_subscribers, apple_total=apple_total,
                         web_subscribers=web_subscribers,
                         packages=packages)
         else:

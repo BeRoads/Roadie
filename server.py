@@ -125,17 +125,21 @@ class Application(tornado.web.Application):
         """
             Logs a notification into our mysql database
         """
-        self.db.execute("INSERT INTO notification_logs (uuid, type, size, time) VALUES "
-                        "(\"%s\", \"%s\", %d, %d)" %
-                        (notif['uuid'], notif['type'], notif['size'], notif['time']))
+        self.db.execute("INSERT INTO notification_logs (uuid, type, size, time, sandbox) VALUES "
+                        "(\"%s\", \"%s\", %d, %d, %s)" %
+                        (notif['uuid'], notif['type'], notif['size'], notif['time'], notif['push']['sandbox']))
         return
 
     @tornado.gen.coroutine
     def traffic_differ(self, language):
         # traffic differ with mysql stored events (md5 hash)
         try:
-            rows = yield self.db.execute("SELECT * FROM trafic WHERE language = '%s' AND insert_time > %d" % (language, self.last_insert_time))
-            return rows.fetchall()
+            last_notification_cursor = yield self.db.execute("SELECT * FROM notification_logs WHERE 'type' = 'apns' AND sandbox = %d ORDER BY id DESC LIMIT 1" % int(bool(self.config['push']['apns_sandbox_mode'])))
+            last_notification = last_notification_cursor.fetchone()
+            self.logger.info("Last_notication %s repr(%s)" %(last_notification, repr(last_notification)))
+            new_events_cursor = yield self.db.execute("SELECT * FROM trafic WHERE 'language' = '%s' AND 'insert_time' > %d" % (language, last_notification['time']))
+            new_events = new_events_cursor.fetchall()
+            return new_events
         except Exception as e:
             logging.error(e)
             return None
@@ -145,81 +149,81 @@ class Application(tornado.web.Application):
     def notify_subscribers(self, language, events):
         """
         """
-        self.logger.info("Notifying subscribers from channel %s" % language)
-
-        for subscriber in self.cache.get(str('subscribers.web.%s' % language)) or []:
-            for event in events:
-                distance = int(haversine(subscriber.coords,
-                                         {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
-                if distance < int(subscriber.area):
-                    event['distance'] = distance
-                    # PUBLISH
-                    message = {
-                        "uuid": subscriber.uuid,
-                        "code": 3,
-                        "data": event
-                    }
-                    self.logger.info("Sending update to subscriber %s" % subscriber.uuid)
-                    notif = {"uuid": subscriber.uuid, "type": "web", "size": len(str(event)), "time": int(time.time())}
-                    subscriber.write_message(tornado.escape.json_encode(message))
-                    self.log_notification(notif)
-
-
-        # Google Cloud Service
-        subscribers = self.cache.get(str('subscribers.gcm.%s' % language))
-        for subscriber in subscribers:
-            for event in events:
-                distance = sys.maxint
-                if 'points' in subscriber:
-                    current_point = subscriber['points'][0]
-                    for i in range(1, len(subscriber['points'])):
-                        # compute distance between a point (the event coordinates) and
-                        # a line delimited by two points from the points array
-                        next_point = subscriber['points'][i]
-                        #first we need to get coordinates in cartesian
-                        x = nearest_point_segment(current_point, next_point, subscriber['coords'])
-                        distance = haversine(x, subscriber['coords']) < subscriber['area']
-
-                else:
-                    distance = int(
-                        haversine({'latitude': subscriber['coords']['lat'], 'longitude': subscriber['coords']['lng']},
-                                  {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
-
-                if distance < int(subscriber['area']):
-                    event['distance'] = distance
-                    response = self.gcm.json_request(
-                        registration_ids=[subscriber['registration_id']], data=event,
-                        collapse_key='beroads', delay_while_idle=True, time_to_live=3600
-                    )
-                    self.logger.info(
-                        "Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
-                    # Handling errors
-                    if 'errors' in response:
-                        for error, reg_ids in response['errors'].items():
-                            # Check for errors and act accordingly
-                            if error is 'NotRegistered':
-                                # Remove reg_ids from database
-                                self.logger.error("Device %s not registered, removing from channel %s" %
-                                                  (subscriber["registration_id"], language))
-                                subscribers.delete(subscriber)
-                                self.cache.set(str('subscribers.gcm.%s' % language), subscribers)
-                    if 'canonical' in response:
-                        for reg_id, canonical_id in response['canonical'].items():
-                            subscriber['registration_id'] = canonical_id
-                    notif = {
-                        "uuid": subscriber['registration_id'],
-                        "type": "gcm",
-                        "size": len(str(event)),
-                        "time": int(time.time())
-                    }
-                    self.log_notification(notif)
-
-
-        # Apple APNS
         if not self.config['push']['apns_sandbox_mode']:
             sandbox_mode = "production"
+            self.logger.info("Notifying subscribers from channel %s" % language)
+
+            for subscriber in self.cache.get(str('subscribers.web.%s' % language)) or []:
+                for event in events:
+                    distance = int(haversine(subscriber.coords,
+                                             {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
+                    if distance < int(subscriber.area):
+                        event['distance'] = distance
+                        # PUBLISH
+                        message = {
+                            "uuid": subscriber.uuid,
+                            "code": 3,
+                            "data": event
+                        }
+                        self.logger.info("Sending update to subscriber %s" % subscriber.uuid)
+                        notif = {"uuid": subscriber.uuid, "type": "web", "size": len(str(event)), "time": int(time.time())}
+                        subscriber.write_message(tornado.escape.json_encode(message))
+                        self.log_notification(notif)
+
+
+            # Google Cloud Service
+            subscribers = self.cache.get(str('subscribers.gcm.%s' % language))
+            for subscriber in subscribers:
+                for event in events:
+                    distance = sys.maxint
+                    if 'points' in subscriber:
+                        current_point = subscriber['points'][0]
+                        for i in range(1, len(subscriber['points'])):
+                            # compute distance between a point (the event coordinates) and
+                            # a line delimited by two points from the points array
+                            next_point = subscriber['points'][i]
+                            #first we need to get coordinates in cartesian
+                            x = nearest_point_segment(current_point, next_point, subscriber['coords'])
+                            distance = haversine(x, subscriber['coords']) < subscriber['area']
+
+                    else:
+                        distance = int(
+                            haversine({'latitude': subscriber['coords']['lat'], 'longitude': subscriber['coords']['lng']},
+                                      {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
+
+                    if distance < int(subscriber['area']):
+                        event['distance'] = distance
+                        response = self.gcm.json_request(
+                            registration_ids=[subscriber['registration_id']], data=event,
+                            collapse_key='beroads', delay_while_idle=True, time_to_live=3600
+                        )
+                        self.logger.info(
+                            "Sending update %s to google subscriber %s" % (event, subscriber['registration_id']))
+                        # Handling errors
+                        if 'errors' in response:
+                            for error, reg_ids in response['errors'].items():
+                                # Check for errors and act accordingly
+                                if error is 'NotRegistered':
+                                    # Remove reg_ids from database
+                                    self.logger.error("Device %s not registered, removing from channel %s" %
+                                                      (subscriber["registration_id"], language))
+                                    subscribers.delete(subscriber)
+                                    self.cache.set(str('subscribers.gcm.%s' % language), subscribers)
+                        if 'canonical' in response:
+                            for reg_id, canonical_id in response['canonical'].items():
+                                subscriber['registration_id'] = canonical_id
+                        notif = {
+                            "uuid": subscriber['registration_id'],
+                            "type": "gcm",
+                            "size": len(str(event)),
+                            "time": int(time.time())
+                        }
+                        self.log_notification(notif)
+
+        # Apple APNS
         else:
             sandbox_mode = "sandbox"
+
         subscribers = self.cache.get(str('subscribers.apns.%s.%s' % (sandbox_mode, language)))
         for subscriber in subscribers:
             for event in events:
@@ -251,7 +255,8 @@ class Application(tornado.web.Application):
                         "uuid": subscriber['device_token'],
                         "type": "apns",
                         "size": len(str(message)),
-                        "time": int(time.time())
+                        "time": int(time.time()),
+                        "sandbox": self.config['push']['apns_sandbox_mode']
                     }
                     self.log_notification(notif)
 
