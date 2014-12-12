@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from pymysql.cursors import DictCursor
+
 __author__ = 'quentinkaiser'
 import sys, os, time, logging, requests, re, json
 import hashlib
@@ -416,7 +418,8 @@ class TrafficLoader:
                 str(self.config['mysql']['username']),
                 str(self.config['mysql']['password']),
                 str(self.config['mysql']['database']),
-                charset='utf8'
+                charset='utf8',
+                cursorclass=DictCursor
             )
             cursor = con.cursor()
             cursor.execute("UPDATE trafic SET active = 0 WHERE 1")
@@ -486,8 +489,8 @@ class TrafficLoader:
             sys.exit(2)
         except Exception as e:
             self.logger.exception(e)
-        if con:
-            con.close()
+            if con:
+                con.close()
 
 
     def parse_traffic(self, raw_data, out_queue):

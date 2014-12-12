@@ -67,18 +67,27 @@ class DashboardHandler(BaseHandler):
                 for r_row in all_ressources:
                     packages[package_name].append(str(r_row[0]))
 
+            # GCM Stats
             google_subscribers = dict(
                 fr=self.cache.get('subscribers.gcm.fr'),
                 nl=self.cache.get('subscribers.gcm.nl'),
                 de=self.cache.get('subscribers.gcm.de'),
                 en=self.cache.get('subscribers.gcm.en')
             )
-            apple_subscribers = dict(
-                fr=self.cache.get('subscribers.apns.fr'),
-                nl=self.cache.get('subscribers.apns.nl'),
-                de=self.cache.get('subscribers.apns.de'),
-                en=self.cache.get('subscribers.apns.en')
-            )
+
+            # APNS Stats
+            apple_subscribers = dict()
+            if not self.config['push']['apns_sandbox_mode']:
+                sandbox_mode = "production"
+            else:
+                sandbox_mode = "sandbox"
+            for language in ['fr', 'nl', 'de', 'en']:
+                apple_subscribers[language] = self.cache.get('subscribers.apns.%s.%s' % (sandbox_mode, language))
+                if not apple_subscribers[language]:
+                    apple_subscribers[language] = 0
+
+
+            #Web subscibers stats
             web_subscribers = dict(
                 fr=self.cache.get('subscribers.web.fr'),
                 nl=self.cache.get('subscribers.web.nl'),

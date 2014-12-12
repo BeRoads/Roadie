@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from tornado_mysql.cursors import DictCursor
+
 __author__ = 'quentinkaiser'
 import os
 import sys
@@ -77,14 +79,14 @@ class Application(tornado.web.Application):
             self.apns = APNs(con)
 
         # Have one global connection to the TDT DB across all handlers
-        pools.DEBUG = True
         self.db = pools.Pool(
             dict(
                 host=self.config['mysql']['host'],
                 port=3306,
                 database=self.config['mysql']['database'],
                 user=self.config['mysql']['username'],
-                password=self.config['mysql']['password']
+                password=self.config['mysql']['password'],
+                cursorclass=DictCursor
             ),
             max_idle_connections=1,
             max_recycle_sec=3)
@@ -125,20 +127,23 @@ class Application(tornado.web.Application):
         """
             Logs a notification into our mysql database
         """
-        self.db.execute("INSERT INTO notification_logs (uuid, type, size, time, sandbox) VALUES "
-                        "(\"%s\", \"%s\", %d, %d, %s)" %
-                        (notif['uuid'], notif['type'], notif['size'], notif['time'], notif['push']['sandbox']))
+        self.logger.info("Insert log notification : %s" % notif)
+        result = yield self.db.execute("INSERT INTO notification_logs (uuid, type, size, time, language, sandbox) VALUES (\"%s\", \"%s\", %d, %d,\"%s\", %d)" % (notif['uuid'], notif['type'], notif['size'], notif['time'], notif['language'], notif['sandbox']))
         return
 
     @tornado.gen.coroutine
     def traffic_differ(self, language):
         # traffic differ with mysql stored events (md5 hash)
         try:
-            last_notification_cursor = yield self.db.execute("SELECT * FROM notification_logs WHERE 'type' = 'apns' AND sandbox = %d ORDER BY id DESC LIMIT 1" % int(bool(self.config['push']['apns_sandbox_mode'])))
+            last_notification_cursor = yield self.db.execute("SELECT * FROM `notification_logs` WHERE type = \"apns\" AND language = \"%s\" AND sandbox = %d ORDER BY id DESC LIMIT 1" % (language,int(bool(self.config['push']['apns_sandbox_mode']))))
             last_notification = last_notification_cursor.fetchone()
-            self.logger.info("Last_notication %s repr(%s)" %(last_notification, repr(last_notification)))
-            new_events_cursor = yield self.db.execute("SELECT * FROM trafic WHERE 'language' = '%s' AND 'insert_time' > %d" % (language, last_notification['time']))
-            new_events = new_events_cursor.fetchall()
+            self.logger.info("Last_notication %s" %(last_notification))
+            if last_notification is None:
+                new_events_cursor = yield self.db.execute("SELECT * FROM `trafic` WHERE `language` = '%s' AND `insert_time` > UNIX_TIMESTAMP(CURDATE())" % language)
+                new_events = new_events_cursor.fetchall()
+            else:
+                new_events_cursor = yield self.db.execute("SELECT * FROM `trafic` WHERE `language` = '%s' AND `insert_time` > %s" % (language, int(last_notification['time'])))
+                new_events = new_events_cursor.fetchall()
             return new_events
         except Exception as e:
             logging.error(e)
@@ -152,8 +157,10 @@ class Application(tornado.web.Application):
         if not self.config['push']['apns_sandbox_mode']:
             sandbox_mode = "production"
             self.logger.info("Notifying subscribers from channel %s" % language)
-
-            for subscriber in self.cache.get(str('subscribers.web.%s' % language)) or []:
+            subscribers = self.cache.get(str('subscribers.web.%s' % language))
+            if not subscribers:
+                subscribers = []
+            for subscriber in subscribers:
                 for event in events:
                     distance = int(haversine(subscriber.coords,
                                              {'latitude': float(event['lat']), 'longitude': float(event['lng'])}))
@@ -166,13 +173,20 @@ class Application(tornado.web.Application):
                             "data": event
                         }
                         self.logger.info("Sending update to subscriber %s" % subscriber.uuid)
-                        notif = {"uuid": subscriber.uuid, "type": "web", "size": len(str(event)), "time": int(time.time())}
+                        notif = {"uuid": subscriber.uuid,
+                                 "type": "web",
+                                 "size": len(str(event)),
+                                 "time": int(time.time()),
+                                 "sandbox": int(bool(self.config['push']['apns_sandbox_mode'])),
+                                 "language": language}
                         subscriber.write_message(tornado.escape.json_encode(message))
                         self.log_notification(notif)
 
 
             # Google Cloud Service
             subscribers = self.cache.get(str('subscribers.gcm.%s' % language))
+            if not subscribers:
+                subscribers = []
             for subscriber in subscribers:
                 for event in events:
                     distance = sys.maxint
@@ -216,7 +230,9 @@ class Application(tornado.web.Application):
                             "uuid": subscriber['registration_id'],
                             "type": "gcm",
                             "size": len(str(event)),
-                            "time": int(time.time())
+                            "time": int(time.time()),
+                            "sandbox": int(bool(self.config['push']['apns_sandbox_mode'])),
+                            "language": language
                         }
                         self.log_notification(notif)
 
@@ -225,6 +241,8 @@ class Application(tornado.web.Application):
             sandbox_mode = "sandbox"
 
         subscribers = self.cache.get(str('subscribers.apns.%s.%s' % (sandbox_mode, language)))
+        if not subscribers:
+            subscribers = []
         for subscriber in subscribers:
             for event in events:
                 distance = int(haversine(subscriber['coords'],
@@ -232,8 +250,21 @@ class Application(tornado.web.Application):
                 if distance < 10:
                     event['distance'] = distance
 
-                    message = Message([subscriber['device_token']], alert=event['location'], badge=5)
+                    message = Message([subscriber['device_token']], alert=event['location'], badge=1, extra={'id': event['id']})
                     res = self.apns.send(message)
+
+                    self.logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
+                    notif = {
+                        "uuid": subscriber['device_token'],
+                        "type": "apns",
+                        "size": len(str(message)),
+                        "time": int(time.time()),
+                        "sandbox": int(bool(self.config['push']['apns_sandbox_mode'])),
+                        "language": language
+                    }
+                    if not res.errors:
+                        self.log_notification(notif)
+                        self.logger.info("Notification successfully sent to %s" % subscriber['device_token'])
 
                     # Check failures. Check codes in APNs reference docs.
                     for token, reason in res.failed.items():
@@ -250,15 +281,6 @@ class Application(tornado.web.Application):
                     if res.needs_retry():
                         retry_message = res.retry()
 
-                    self.logger.info("Sending update to apple subscriber %s" % subscriber['device_token'])
-                    notif = {
-                        "uuid": subscriber['device_token'],
-                        "type": "apns",
-                        "size": len(str(message)),
-                        "time": int(time.time()),
-                        "sandbox": self.config['push']['apns_sandbox_mode']
-                    }
-                    self.log_notification(notif)
 
         return True
 

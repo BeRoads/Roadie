@@ -48,7 +48,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
 
     def post(self, *args, **kwargs):
         """
-            Blah blah blah
+            Add or update device info for push APNS
         """
         try:
             if not self.config['push']['apns_sandbox_mode']:
@@ -56,8 +56,8 @@ class ApplePushNotificationServerHandler(BaseHandler):
             else:
                 sandbox_mode = "sandbox"
 
-            self.logger.info("Request received from iDevice : " + self.request.body)
-            data = tornado.escape.json_decode(str(self.request.body))
+            self.logger.info("Request received from iDevice : %s" % self.request.body.decode("utf-8"))
+            data = tornado.escape.json_decode(self.request.body)
             if data['device_token'] is None or not len(data['device_token']):
                 raise AttributeError("device_token is not set")
 
@@ -66,7 +66,7 @@ class ApplePushNotificationServerHandler(BaseHandler):
             if data['language'] not in ['fr', 'nl', 'en', 'de']:
                 raise AttributeError("language is not valid")
 
-            if data['area'] is None or not len(data['area']):
+            if data['area'] is None:
                 raise AttributeError("area is not set")
 
             if data['area'] < 0:
@@ -78,19 +78,19 @@ class ApplePushNotificationServerHandler(BaseHandler):
             if data["coords"]["latitude"] is None or data["coords"]["longitude"] is None:
                 raise AttributeError('latitude is not set')
             else:
-                if (float(data["coords"]["latitude"]) > 90
-                    or float(data["coords"]["latitude"]) < -90):
+                if float(data["coords"]["latitude"]) > 90 or float(data["coords"]["latitude"]) < -90:
                     raise ValueError("latitude is not valid")
                 else:
                     data['coords']['latitude'] = float(data['coords']['latitude'])
-                if (float(data["coords"]["longitude"]) > 180
-                    or float(data["coords"]["longitude"]) < -180):
+                if float(data["coords"]["longitude"]) > 180 or float(data["coords"]["longitude"]) < -180:
                     raise ValueError("longitude is not valid")
                 else:
                     data['coords']['longitude'] = float(data['coords']['longitude'])
 
             present = False
             subscribers = self.cache.get(str('subscribers.apns.%s.%s' % (sandbox_mode, data['language'])))
+            if not subscribers:
+                subscribers = []
             for subscriber in subscribers:
                 if subscriber['device_token'] == data['device_token']:
                     subscriber = data
