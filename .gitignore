@@ -7,6 +7,7 @@ supervisord.cfg
 beroads.log
 beroads.pem
 beroads.key
+beroads.crt
 npm-debug.log
 auth/*
 env/*
