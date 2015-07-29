@@ -5,6 +5,8 @@
 config.ini
 supervisord.cfg
 beroads.log
+beroads.pem
+beroads.key
 npm-debug.log
 auth/*
 env/*
