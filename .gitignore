@@ -16,3 +16,4 @@ data/webcams/brussels/*
 data/webcams/flanders/*
 data/webcams/wallonia/*
 __pycache__
+*.pyc
