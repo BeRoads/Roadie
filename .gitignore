@@ -16,3 +16,4 @@ data/traffic/*
 data/webcams/brussels/*
 data/webcams/flanders/*
 data/webcams/wallonia/*
+*.pyc
