@@ -19,14 +19,14 @@ meld3==1.0.0
 numpy==1.9.1
 oauth2==1.5.211
 oauthlib==0.7.2
-pyOpenSSL==0.14
+pyOpenSSL==19.0.0
 pyapns==0.4.1
 pycparser==2.10
 pyproj==1.9.3
 python-gcm==0.1.5
 python-memcached==1.53
 python-twitter==2.0
-requests==2.4.3
+requests==2.21.0
 requests-oauthlib==0.4.2
 simplejson==3.6.5
 six==1.8.0
