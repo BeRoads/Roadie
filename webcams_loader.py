@@ -169,7 +169,18 @@ class WebcamsLoader:
                 similarity = float(sum([a == b for a, b in zip(c1, c2)])) / len(c1)
                 if similarity > 0.8:
                     return False
-
+            with open('%ssamples/unavailable_wallonia2.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
+                c1 = f1.read()
+                c2 = f2.read()
+                similarity = float(sum([a == b for a, b in zip(c1, c2)])) / len(c1)
+                if similarity > 0.8:
+                    return False
+            with open('%ssamples/videojet.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
+                c1 = f1.read()
+                c2 = f2.read()
+                similarity = float(sum([a == b for a, b in zip(c1, c2)])) / len(c1)
+                if similarity > 0.8:
+                    return False
             with open('%ssamples/unavailable_flanders.jpg'%self.webcams_directory) as f1, open(item['output_url']) as f2:
                 c1 = f1.read()
                 c2 = f2.read()
@@ -230,7 +241,7 @@ class WebcamsLoader:
                             'Referer': 'http://trafiroutes.wallonie.be/trafiroutes/pages/mobile/index_FR.html',
                             'Accept': 'image/webp,*/*;q=0.8',
                             'Accept-Encoding': 'gzip, deflate, sdch',
-                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.10 Safari/537.36'
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/601.6.17 (KHTML, like Gecko) Version/9.1.1 Safari/601.6.17'
                         }#,
                         #'auth' : HTTPBasicAuth('beroads', 'supermamy')
                     })
