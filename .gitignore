@@ -9,9 +9,11 @@ beroads.pem
 beroads.key
 beroads.crt
 npm-debug.log
-auth/*
-env/*
-logs/*
+auth/
+!auth/.gitkeep
+env/
+logs/
+!logs/.gitkeep
 data/traffic/*
 data/webcams/brussels/*
 data/webcams/flanders/*
