@@ -16,7 +16,7 @@ docutils==0.12
 httplib2==0.9
 lxml==3.4.1
 meld3==1.0.0
-numpy==1.9.1
+numpy==1.21.0
 oauth2==1.5.211
 oauthlib==0.7.2
 pyOpenSSL==19.0.0
