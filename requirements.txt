@@ -1,7 +1,7 @@
 ## The following requirements were added by pip --freeze:
 BeautifulSoup==3.2.1
 MySQL-python==1.2.5
-pillow==6.2.2
+pillow==9.3.0
 Twisted==19.7.0
 ##apns==2.0
 apns-clerk==0.2.0
