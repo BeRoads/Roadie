@@ -7,7 +7,7 @@ Twisted==19.7.0
 apns-clerk==0.2.0
 argparse==1.2.1
 backports.ssl-match-hostname==3.4.0.2
-certifi==2019.6.16
+certifi==2022.12.7
 cffi==1.12.3
 configparser==3.3.0r2
 cryptography==2.7
