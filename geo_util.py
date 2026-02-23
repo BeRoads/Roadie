@@ -1,10 +1,25 @@
 __author__ = 'lionelschinckus'
 
 from math import *
-import numpy as np
 
 PRECISION = 10
 R = 6367
+
+
+def _cross(u, v):
+    return {
+        'x': (u['y'] * v['z']) - (u['z'] * v['y']),
+        'y': (u['z'] * v['x']) - (u['x'] * v['z']),
+        'z': (u['x'] * v['y']) - (u['y'] * v['x']),
+    }
+
+
+def _scale(v, factor):
+    return {
+        'x': v['x'] * factor,
+        'y': v['y'] * factor,
+        'z': v['z'] * factor,
+    }
 
 
 def haversine(a, b):
@@ -44,14 +59,13 @@ def nearest_point_great_circle(a, b, c):
     """
 
     """
-    d = np.array(to_cartesian(a['latitude'], a['longitude']))
-    e = np.array(to_cartesian(b['latitude'], b['longitude']))
-    f = np.array(to_cartesian(c['coords']['latitude'], c['coords']['longitude']))
+    d = to_cartesian(a['latitude'], a['longitude'])
+    e = to_cartesian(b['latitude'], b['longitude'])
+    f = to_cartesian(c['coords']['latitude'], c['coords']['longitude'])
 
-    G = np.cross(d, e)
-    H = np.cross(f, G)
-    t = np.cross(G, H)
-    t *= R
+    g = _cross(d, e)
+    h = _cross(f, g)
+    t = _scale(_cross(g, h), R)
     return from_cartesian(t)
 
 
@@ -70,4 +84,3 @@ def nearest_point_segment(a, b, c):
     if on_segment(a, b, t):
         return t
     return a if haversine(a, c) < haversine(b, c) else c
-
