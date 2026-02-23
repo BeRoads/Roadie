@@ -3,8 +3,7 @@ beautifulsoup4==4.3.2
 PyMySQL==0.6.2
 pillow==2.6.1
 Twisted==14.0.2
-##apns==2.0
-apns-clerk==0.1.1
+apns2==0.7.2
 argparse==1.2.1
 backports.ssl-match-hostname==3.4.0.2
 certifi==14.05.14
@@ -22,7 +21,7 @@ pyOpenSSL==0.14
 pyapns==0.4.1
 pycparser==2.10
 pyproj==1.9.3
-git+https://github.com/ValCapri/python-gcm.git@python3#egg=python-gcm
+firebase-admin==6.6.0
 python3-memcached==1.51
 twitter==1.15.0
 requests==2.4.3
