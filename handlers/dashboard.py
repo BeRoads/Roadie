@@ -10,8 +10,9 @@ __author__ = 'lionelschinckus'
 @require_basic_auth
 class DashboardHandler(BaseHandler):
     # for monitoring purpose
+    @gen.coroutine
     def head(self, basicauth_user, basicauth_pass):
-        if self.auth(basicauth_user, basicauth_pass):
+        if (yield self.auth(basicauth_user, basicauth_pass)):
             return
         else:
             self.send_error(403)
@@ -22,7 +23,7 @@ class DashboardHandler(BaseHandler):
         """
 
         """
-        if self.auth(basicauth_user, basicauth_pass):
+        if (yield self.auth(basicauth_user, basicauth_pass)):
             self.set_header("Content-Type", "text/html; charset=UTF-8")
             sandbox_mode = "sandbox" if self.config['push'].getboolean('apns_sandbox_mode') else "production"
 
@@ -62,11 +63,12 @@ class DashboardHandler(BaseHandler):
 
             all_packages = yield self.db.execute("SELECT id, package_name FROM package")
             for p_row in all_packages:
-                package_id, package_name = p_row
+                package_id = p_row["id"]
+                package_name = p_row["package_name"]
                 packages[package_name] = []
                 all_ressources = yield self.db.execute("SELECT resource_name FROM resource WHERE package_id = %s", package_id)
                 for r_row in all_ressources:
-                    packages[package_name].append(str(r_row[0]))
+                    packages[package_name].append(str(r_row["resource_name"]))
 
             # GCM Stats
             google_subscribers = dict(

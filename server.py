@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from tornado_mysql.cursors import DictCursor
 
 __author__ = 'quentinkaiser'
 
@@ -16,8 +15,8 @@ import tornado.gen
 import tornado.ioloop
 import tornado.web
 import tornado.websocket
-from tornado_mysql import pools
 
+from db.async_pool import AsyncPyMySQLPool
 from geo_util import haversine, nearest_point_segment
 from handlers.analytics import *
 from handlers.apns import *
@@ -89,18 +88,14 @@ class Application(tornado.web.Application):
         self.gcm = self.push_gateway
         self.apns = self.push_gateway
 
-        # Have one global connection to the TDT DB across all handlers
-        self.db = pools.Pool(
-            dict(
-                host=self.config['mysql']['host'],
-                port=3306,
-                database=self.config['mysql']['database'],
-                user=self.config['mysql']['username'],
-                password=self.config['mysql']['password'],
-                cursorclass=DictCursor,
-            ),
-            max_idle_connections=1,
-            max_recycle_sec=3,
+        # Keep the old execute() contract but use a Python 3 compatible DB adapter.
+        self.db = AsyncPyMySQLPool(
+            host=self.config['mysql']['host'],
+            port=self.config['mysql'].get('port', 3306),
+            database=self.config['mysql']['database'],
+            user=self.config['mysql']['username'],
+            password=self.config['mysql']['password'],
+            max_workers=int(self.config['mysql'].get('pool_workers', 4)),
         )
 
         self.cache = memcache.Client(
