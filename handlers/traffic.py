@@ -136,7 +136,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
             message = {
                 'code': 5,
                 'error_code': 0,
-                'error_message': e.message
+                'error_message': str(e)
             }
             self.ws_connection.write_message(tornado.escape.json_encode(message))
         except ValueError as e:
@@ -144,7 +144,7 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
             message = {
                 'code': 5,
                 'error_code': 0,
-                'error_message': e.message
+                'error_message': str(e)
             }
             self.ws_connection.write_message(tornado.escape.json_encode(message))
         except Exception as e:
@@ -152,6 +152,6 @@ class TrafficSocketHandler(tornado.websocket.WebSocketHandler):
             message = {
                 'code': 5,
                 'error_code': 0,
-                'error_message': e.message
+                'error_message': str(e)
             }
             self.ws_connection.write_message(tornado.escape.json_encode(message))

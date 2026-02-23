@@ -11,7 +11,9 @@ class WebsocketSendNotificationHandler(BaseHandler):
         """
         if self.get_argument("uuid") is not None and self.get_argument("message") is not None:
             for language in ['fr', 'nl', 'de', 'en']:
-                subscriber = self.cache.get(str('subscribers.web.%s' % language))
+                subscribers = self.cache.get(str('subscribers.web.%s' % language))
+                if not subscribers:
+                    continue
                 for subscriber in subscribers:
                     if subscriber.uuid == self.get_argument("uuid"):
                         message = {
