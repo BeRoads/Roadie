@@ -23,6 +23,7 @@ class AnalyticsSubscribersHandler(BaseHandler):
 
         data = {}
         if self.auth(basicauth_user, basicauth_pass):
+            sandbox_mode = "sandbox" if self.config['push'].getboolean('apns_sandbox_mode') else "production"
             if subscriber_type in self.subscribers_types:
                 if subscriber_type == "web":
                     data = dict(
@@ -33,17 +34,17 @@ class AnalyticsSubscribersHandler(BaseHandler):
                     )
                 elif subscriber_type == "google":
                     data = dict(
-                        fr=self.cache.get('subscribers.gcm.fr'),
-                        nl=self.cache.get('subscribers.gcm.nl'),
-                        de=self.cache.get('subscribers.gcm.de'),
-                        en=self.cache.get('subscribers.gcm.en')
+                        fr=self.cache.get('subscribers.fcm.fr') or self.cache.get('subscribers.gcm.fr') or [],
+                        nl=self.cache.get('subscribers.fcm.nl') or self.cache.get('subscribers.gcm.nl') or [],
+                        de=self.cache.get('subscribers.fcm.de') or self.cache.get('subscribers.gcm.de') or [],
+                        en=self.cache.get('subscribers.fcm.en') or self.cache.get('subscribers.gcm.en') or []
                     )
                 elif subscriber_type == "apple":
                     data = dict(
-                        fr=self.cache.get('subscribers.apns.fr'),
-                        nl=self.cache.get('subscribers.apns.nl'),
-                        de=self.cache.get('subscribers.apns.de'),
-                        en=self.cache.get('subscribers.apns.en')
+                        fr=self.cache.get('subscribers.apns.%s.fr' % sandbox_mode) or self.cache.get('subscribers.apns.fr') or [],
+                        nl=self.cache.get('subscribers.apns.%s.nl' % sandbox_mode) or self.cache.get('subscribers.apns.nl') or [],
+                        de=self.cache.get('subscribers.apns.%s.de' % sandbox_mode) or self.cache.get('subscribers.apns.de') or [],
+                        en=self.cache.get('subscribers.apns.%s.en' % sandbox_mode) or self.cache.get('subscribers.apns.en') or []
                     )
 
                 self.set_header("Content-Type", "text/json; charset=UTF-8")

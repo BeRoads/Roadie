@@ -1,6 +1,4 @@
-import logging
 import time
-from apns_clerk import *
 from handlers.base import BaseHandler
 import tornado.escape
 
@@ -12,49 +10,55 @@ class AppleSendNotificationHandler(BaseHandler):
         """
 
         """
-        if self.get_argument("device_token") is not None and self.get_argument("message") is not None:
-            message = str(self.get_argument("message"))
-            device_token = self.get_argument("device_token")
-            try:
-                payload = Message(tokens=device_token, alert=message, sound="default", badge=1)
-                result = self.apns.send(payload)
-                self.write("Le message a pu etre envoye")
-                self.set_status(200)
-            except:
-                # if the payload is too large, we chomp the alert content
-                self.logger.error("Check your network, I could not connect to APNs")
-                print("Check your network, I could not connect to APNs")
-            else:
-                    for token, (reason, explanation) in result.failed.items():
-                        print("token %s, reason : %s, explanation : %s"%(token, result, explanation))
-                        self.write("Le message n'a pas pu etre envoye, raison : %s, explication : %s"%(reason, explanation))
-                        self.set_status(500)
-
-                    for reason, explanation in result.errors:
-                        print("reason %s, explanation : %s" % (result, explanation))
-                        self.write("Le message n'a pas pu etre envoye, raison : %s, explication : %s"%(reason, explanation))
-                        self.set_status(500)
-                    if result.needs_retry():
-                        # extract failed tokens as new message
-                        message = payload.retry()
-                        print("Need to be retry")
-                        self.write("Need to be retry ...")
-        else:
+        device_token = self.get_argument("device_token", None)
+        message = self.get_argument("message", None)
+        if not device_token or not message:
             self.send_error(404)
+            return
+
+        sent, details, _ = self.push_gateway.send_apns_notification(
+            device_token=device_token,
+            alert=str(message),
+            custom={"source": "manual-test"},
+        )
+        if sent:
+            self.set_status(200)
+            self.write("Le message a pu etre envoye")
+            return
+
+        self.logger.error("APNS send test failed: %s", details)
+        self.set_status(500)
+        self.write("Le message n'a pas pu etre envoye: %s" % details)
 
 
 class ApplePushNotificationServerHandler(BaseHandler):
     SUPPORTED_METHODS = ("POST")
+
+    @staticmethod
+    def _extract_coords(payload):
+        coords = payload.get("coords")
+        if not coords:
+            raise AttributeError("coords is not set")
+
+        latitude = coords.get("latitude", coords.get("lat"))
+        longitude = coords.get("longitude", coords.get("lng"))
+        if latitude is None or longitude is None:
+            raise AttributeError("latitude/longitude is not set")
+
+        latitude = float(latitude)
+        longitude = float(longitude)
+        if latitude > 90 or latitude < -90:
+            raise ValueError("latitude is not valid")
+        if longitude > 180 or longitude < -180:
+            raise ValueError("longitude is not valid")
+        return {"latitude": latitude, "longitude": longitude}
 
     def post(self, *args, **kwargs):
         """
             Add or update device info for push APNS
         """
         try:
-            if not self.config['push']['apns_sandbox_mode']:
-                sandbox_mode = "production"
-            else:
-                sandbox_mode = "sandbox"
+            sandbox_mode = self.push_gateway.apns_environment
 
             self.logger.info("Request received from iDevice : %s" % self.request.body.decode("utf-8"))
             data = tornado.escape.json_decode(self.request.body)
@@ -69,40 +73,42 @@ class ApplePushNotificationServerHandler(BaseHandler):
             if data['area'] is None:
                 raise AttributeError("area is not set")
 
+            data['area'] = int(data['area'])
             if data['area'] < 0:
                 raise ValueError("area must be a positive value")
 
-            if data['coords'] is None or not len(data['coords']):
-                raise AttributeError("coords is not set")
-
-            if data["coords"]["latitude"] is None or data["coords"]["longitude"] is None:
-                raise AttributeError('latitude is not set')
-            else:
-                if float(data["coords"]["latitude"]) > 90 or float(data["coords"]["latitude"]) < -90:
-                    raise ValueError("latitude is not valid")
-                else:
-                    data['coords']['latitude'] = float(data['coords']['latitude'])
-                if float(data["coords"]["longitude"]) > 180 or float(data["coords"]["longitude"]) < -180:
-                    raise ValueError("longitude is not valid")
-                else:
-                    data['coords']['longitude'] = float(data['coords']['longitude'])
+            normalized = {
+                "device_token": data["device_token"],
+                "language": data["language"],
+                "area": data["area"],
+                "coords": self._extract_coords(data),
+                "timestamp": time.time(),
+            }
 
             present = False
-            subscribers = self.cache.get(str('subscribers.apns.%s.%s' % (sandbox_mode, data['language'])))
+            cache_key = str('subscribers.apns.%s.%s' % (sandbox_mode, data['language']))
+            legacy_cache_key = str('subscribers.apns.%s' % data['language'])
+            subscribers = self.cache.get(cache_key)
             if not subscribers:
                 subscribers = []
-            for subscriber in subscribers:
+            for index, subscriber in enumerate(subscribers):
                 if subscriber['device_token'] == data['device_token']:
-                    subscriber = data
+                    subscribers[index] = normalized
                     present = True
+                    break
 
             if not present:
-                data['timestamp'] = time.time()
-                subscribers.append(data)
+                subscribers.append(normalized)
 
-            self.cache.set(str('subscribers.apns.%s.%s' % (sandbox_mode, data['language'])), subscribers)
+            self.cache.set(cache_key, subscribers)
+            # Keep legacy key for old analytics endpoint.
+            self.cache.set(legacy_cache_key, subscribers)
             self.set_status(200)
+            self.write({"status": "ok"})
 
+        except (AttributeError, ValueError) as e:
+            self.logger.error(e)
+            self.send_error(400)
         except Exception as e:
             self.logger.error(e)
             self.send_error(500)

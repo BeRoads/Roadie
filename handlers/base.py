@@ -24,14 +24,21 @@ class BaseHandler(tornado.web.RequestHandler):
         """
 
         """
-        return self.application.gcm
+        return self.application.push_gateway
 
     @property
     def apns(self):
         """
 
         """
-        return self.application.apns
+        return self.application.push_gateway
+
+    @property
+    def push_gateway(self):
+        """
+
+        """
+        return self.application.push_gateway
 
     @property
     def cache(self):
@@ -52,6 +59,8 @@ class BaseHandler(tornado.web.RequestHandler):
         """
 
         """
+        if isinstance(password, str):
+            password = password.encode("utf-8")
         authenticated = yield self.db.execute("SELECT * FROM user2 WHERE username=%s AND password = %s",
                                       username,
                                       hashlib.sha1(password).hexdigest())

@@ -24,6 +24,7 @@ class DashboardHandler(BaseHandler):
         """
         if self.auth(basicauth_user, basicauth_pass):
             self.set_header("Content-Type", "text/html; charset=UTF-8")
+            sandbox_mode = "sandbox" if self.config['push'].getboolean('apns_sandbox_mode') else "production"
 
             sources = [
                 {
@@ -69,20 +70,20 @@ class DashboardHandler(BaseHandler):
 
             # GCM Stats
             google_subscribers = dict(
-                fr=self.cache.get('subscribers.gcm.fr'),
-                nl=self.cache.get('subscribers.gcm.nl'),
-                de=self.cache.get('subscribers.gcm.de'),
-                en=self.cache.get('subscribers.gcm.en')
+                fr=self.cache.get('subscribers.fcm.fr') or self.cache.get('subscribers.gcm.fr') or [],
+                nl=self.cache.get('subscribers.fcm.nl') or self.cache.get('subscribers.gcm.nl') or [],
+                de=self.cache.get('subscribers.fcm.de') or self.cache.get('subscribers.gcm.de') or [],
+                en=self.cache.get('subscribers.fcm.en') or self.cache.get('subscribers.gcm.en') or []
             )
 
             # APNS Stats
             apple_subscribers = dict()
-            if not self.config['push']['apns_sandbox_mode']:
-                sandbox_mode = "production"
-            else:
-                sandbox_mode = "sandbox"
             for language in ['fr', 'nl', 'de', 'en']:
-                apple_subscribers[language] = self.cache.get('subscribers.apns.%s.%s' % (sandbox_mode, language))
+                apple_subscribers[language] = (
+                    self.cache.get('subscribers.apns.%s.%s' % (sandbox_mode, language))
+                    or self.cache.get('subscribers.apns.%s' % language)
+                    or []
+                )
                 if not apple_subscribers[language]:
                     apple_subscribers[language] = 0
 
